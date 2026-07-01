@@ -32,6 +32,9 @@
 <div id="root">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#9FBAAF;font-size:14px;padding:20px;text-align:center;">Chargement de l'app…</div>
 </div>
+<div id="splash" style="position:fixed;inset:0;background:#0F3A30;display:flex;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s ease;">
+  <img src="splash.gif" alt="" style="width:240px;max-width:72vw;height:auto;" />
+</div>
 <script>
 window.addEventListener("error", function (e) {
   var root = document.getElementById("root");
@@ -226,9 +229,7 @@ function renderRoot() {
   } else {
     html += '<div style="display:flex;gap:10px;">' + hourMeterHTML(totalMinutes, "Total cumulé", COLORS.tealLight, 4) + hourMeterHTML(totalOvertime, "Heures sup.", COLORS.amberLight, 3) + '</div>';
 
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:8px 10px;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;font-size:12.5px;">';
-    html += '<span style="color:' + COLORS.inkDim + ';">Interventions facturables</span>';
-    html += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;color:' + COLORS.teal + ';">' + facturableCount + ' / ' + state.entries.length + '</span></div>';
+    html += '<div style="display:flex;gap:10px;margin-top:10px;">' + counterHTML(facturableCount, state.entries.length, "Facturables", COLORS.tealLight, 3) + '</div>';
 
     html += '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:' + COLORS.inkDim + ';">';
     html += '<input id="chk-filter-or" type="checkbox" style="width:16px;height:16px;accent-color:' + COLORS.amber + ';"' + (state.filterOrUnsaved ? ' checked' : '') + '/>';
@@ -280,6 +281,20 @@ function hourMeterHTML(totalMinutes, label, color, hourDigits) {
   out += '<div style="display:flex;align-items:flex-end;gap:4px;"><div style="display:flex;gap:2px;">' + digits(hStr) + '</div>';
   out += '<span style="font-family:\'Space Mono\',monospace;color:' + COLORS.inkDim + ';font-size:13px;margin-bottom:5px;">h</span>';
   out += '<div style="display:flex;gap:2px;">' + digits(String(m).padStart(2, "0")) + '</div></div></div>';
+  return out;
+}
+
+function digitBoxesHTML(str, color) {
+  return str.split("").map(function (ch) {
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:#0A2620;border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
+  }).join('');
+}
+
+function counterHTML(count, total, label, color, digitsCount) {
+  var countStr = String(Math.min(count, Math.pow(10, digitsCount) - 1)).padStart(digitsCount, "0");
+  var out = '<div style="flex:0 0 auto;width:auto;background:linear-gradient(180deg,#2A3234,#1A2022);border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 14px;display:inline-flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
+  out += '<div style="font-family:\'Oswald\',sans-serif;font-size:10.5px;letter-spacing:0.14em;color:' + color + ';text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</div>';
+  out += '<div style="display:flex;gap:2px;">' + digitBoxesHTML(countStr, color) + '</div></div>';
   return out;
 }
 
@@ -672,6 +687,17 @@ function deleteFromForm() {
 
 // --- Démarrage ---
 loadEntries();
+
+// Écran de lancement : reste affiché le temps que le GIF joue en entier, puis s'efface en douceur
+(function () {
+  var SPLASH_DURATION_MS = 9600; // durée du GIF (~9,5s) + petite marge
+  setTimeout(function () {
+    var splash = document.getElementById("splash");
+    if (!splash) return;
+    splash.style.opacity = "0";
+    setTimeout(function () { splash.remove(); }, 400);
+  }, SPLASH_DURATION_MS);
+})();
 </script>
 </body>
 </html>
