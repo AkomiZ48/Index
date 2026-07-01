@@ -690,7 +690,7 @@ loadEntries();
 
 // Écran de lancement : reste affiché le temps que le GIF joue en entier, puis s'efface en douceur
 (function () {
-  var SPLASH_DURATION_MS = 9600; // durée du GIF (~9,5s) + petite marge
+  var SPLASH_DURATION_MS = 6600; // durée réduite de 3s par rapport au GIF complet
   setTimeout(function () {
     var splash = document.getElementById("splash");
     if (!splash) return;
