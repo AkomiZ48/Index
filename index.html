@@ -5,499 +5,538 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
 <title>Carnet d'interventions — DMP LOC</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" />
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #0F3A30; }
+  html, body { margin: 0; padding: 0; background: #0F3A30; font-family: 'Inter', sans-serif; color: #F2EFE6; }
   input[type="date"], input[type="time"] { color-scheme: dark; }
+  input, textarea { width: 100%; box-sizing: border-box; background: #0F1213; border: 1px solid #2A6153; border-radius: 7px; padding: 10px 12px; color: #F2EFE6; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
+  label.field { display: flex; flex-direction: column; gap: 5px; }
+  label.field span { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #9FBAAF; }
+  button { font-family: 'Inter', sans-serif; cursor: pointer; }
+  .btn { border: none; border-radius: 8px; padding: 12px 16px; font-size: 15px; display: flex; align-items: center; justify-content: center; }
 </style>
 </head>
 <body>
 <div id="root">
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#9FBAAF;font-family:sans-serif;font-size:14px;padding:20px;text-align:center;">
-    Chargement de l'app…
-  </div>
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#9FBAAF;font-size:14px;padding:20px;text-align:center;">Chargement de l'app…</div>
 </div>
 <script>
-  window.addEventListener("error", function (e) {
-    var root = document.getElementById("root");
-    if (root) {
-      root.innerHTML =
-        '<div style="min-height:100vh;padding:24px;color:#F0827D;font-family:sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' +
-        '<strong>Erreur au chargement de l\'app :</strong><br/><br/>' +
-        (e.message || "erreur inconnue") +
-        (e.filename ? "<br/><br/>Fichier : " + e.filename + " (ligne " + e.lineno + ")" : "") +
-        "</div>";
-    }
-  });
+window.addEventListener("error", function (e) {
+  var root = document.getElementById("root");
+  if (root) {
+    root.innerHTML =
+      '<div style="min-height:100vh;padding:24px;color:#F0827D;font-size:14px;line-height:1.5;white-space:pre-wrap;">' +
+      '<strong>Erreur au chargement de l\'app :</strong><br/><br/>' +
+      (e.message || "erreur inconnue") +
+      (e.filename ? "<br/><br/>Fichier : " + e.filename + " (ligne " + e.lineno + ")" : "") +
+      "</div>";
+  }
+});
 </script>
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo, useRef } = React;
+<script>
+"use strict";
 
 // --- Connexion Supabase ---
-const SUPABASE_URL = "https://fakiorbnunxfxrdbyzyl.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZha2lvcmJudW54ZnhyZGJ5enlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NTg5ODYsImV4cCI6MjA5ODQzNDk4Nn0.YR82banboRle4npQfxmLOZ4wEh38ldfdN6NAVq1Haf8";
+var SUPABASE_URL = "https://fakiorbnunxfxrdbyzyl.supabase.co";
+var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZha2lvcmJudW54ZnhyZGJ5enlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NTg5ODYsImV4cCI6MjA5ODQzNDk4Nn0.YR82banboRle4npQfxmLOZ4wEh38ldfdN6NAVq1Haf8";
 if (!window.supabase) {
-  throw new Error("La librairie Supabase ne s'est pas chargée (problème réseau ou bloqueur de contenu). Réessaie de recharger la page.");
+  throw new Error("La librairie Supabase ne s'est pas chargée (réseau ou bloqueur de contenu). Recharge la page.");
 }
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const PHOTOS_BUCKET = "photos";
-const MAX_PHOTOS = 6;
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var PHOTOS_BUCKET = "photos";
+var MAX_PHOTOS = 6;
 
-const COLORS = {
-  bg: "#0F3A30",
-  surface: "#154A3D",
-  surfaceRaised: "#1B5747",
-  ink: "#F2EFE6",
-  inkDim: "#9FBAAF",
-  amber: "#C4272C",
-  teal: "#4FB68E",
-  border: "#2A6153",
-  danger: "#E2574F",
-  amberLight: "#F0827D",
-  tealLight: "#7FE0B4",
+var COLORS = {
+  bg: "#0F3A30", surface: "#154A3D", surfaceRaised: "#1B5747", ink: "#F2EFE6", inkDim: "#9FBAAF",
+  amber: "#C4272C", teal: "#4FB68E", border: "#2A6153", danger: "#E2574F", amberLight: "#F0827D", tealLight: "#7FE0B4"
 };
 
-function toMinutes(t) {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
 }
-function durationMinutes(start, end) {
-  let diff = toMinutes(end) - toMinutes(start);
-  if (diff <= 0) diff += 24 * 60;
-  return diff;
-}
-const OVERTIME_WINDOWS = [
-  [11 * 60 + 30, 13 * 60 + 30],
-  [16 * 60 + 30, 24 * 60],
-];
-function overlapMinutes(aStart, aEnd, bStart, bEnd) {
-  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
-}
+
+// --- Calculs métier ---
+function toMinutes(t) { var p = t.split(":"); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
+function durationMinutes(start, end) { var d = toMinutes(end) - toMinutes(start); if (d <= 0) d += 24 * 60; return d; }
+var OVERTIME_WINDOWS = [[11 * 60 + 30, 13 * 60 + 30], [16 * 60 + 30, 24 * 60]];
+function overlapMinutes(aS, aE, bS, bE) { return Math.max(0, Math.min(aE, bE) - Math.max(aS, bS)); }
 function overtimeMinutes(start, end) {
-  const startMin = toMinutes(start);
-  let endMin = toMinutes(end);
-  if (endMin <= startMin) endMin += 24 * 60;
-  let total = 0;
-  const days = Math.ceil(endMin / (24 * 60)) + 1;
-  for (let d = 0; d < days; d++) {
-    const offset = d * 24 * 60;
-    for (const [ws, we] of OVERTIME_WINDOWS) total += overlapMinutes(startMin, endMin, offset + ws, offset + we);
+  var s = toMinutes(start), e = toMinutes(end);
+  if (e <= s) e += 24 * 60;
+  var total = 0, days = Math.ceil(e / (24 * 60)) + 1;
+  for (var d = 0; d < days; d++) {
+    var offset = d * 24 * 60;
+    OVERTIME_WINDOWS.forEach(function (w) { total += overlapMinutes(s, e, offset + w[0], offset + w[1]); });
   }
   return total;
 }
-function fmtDuration(min) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
-}
-function fmtDateShort(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
-}
+function fmtDuration(min) { var h = Math.floor(min / 60), m = min % 60; return m > 0 ? h + "h" + String(m).padStart(2, "0") : h + "h"; }
+function fmtDateShort(dateStr) { var d = new Date(dateStr + "T00:00:00"); return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }); }
 function monthKey(dateStr) { return dateStr.slice(0, 7); }
-function monthLabel(key) {
-  const d = new Date(key + "-01T00:00:00");
-  const label = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
-function emptyForm() {
-  const today = new Date().toISOString().slice(0, 10);
-  return { id: null, date: today, start: "08:00", end: "17:00", lieu: "", client: "", notes: "", photos: [] };
-}
+function monthLabel(key) { var d = new Date(key + "-01T00:00:00"); var l = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); return l.charAt(0).toUpperCase() + l.slice(1); }
+function genId() { return Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 
-function compressImage(file, maxDim = 1000, quality = 0.6) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
-          else { width = Math.round((width * maxDim) / height); height = maxDim; }
+function compressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1000; quality = quality || 0.6;
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; } else { w = Math.round(w * maxDim / h); h = maxDim; }
         }
-        const canvas = document.createElement("canvas");
-        canvas.width = width; canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL("image/jpeg", quality));
       };
-      img.onerror = () => reject(new Error("Image illisible"));
+      img.onerror = function () { reject(new Error("Image illisible")); };
       img.src = e.target.result;
     };
-    reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+    reader.onerror = function () { reject(new Error("Lecture du fichier impossible")); };
     reader.readAsDataURL(file);
   });
 }
 function dataUrlToBlob(dataUrl) {
-  const [header, base64] = dataUrl.split(",");
-  const mime = (header.match(/data:(.*);base64/) || [])[1] || "image/jpeg";
-  const binary = atob(base64);
-  const array = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-  return new Blob([array], { type: mime });
+  var parts = dataUrl.split(",");
+  var mimeMatch = parts[0].match(/data:(.*);base64/);
+  var mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  var binary = atob(parts[1]);
+  var arr = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+  return new Blob([arr], { type: mime });
 }
 
-// --- Accès aux données ---
-async function sbFetchEntries() {
-  const { data, error } = await supabase
-    .from("interventions")
-    .select("*")
-    .order("date", { ascending: false })
-    .order("start_time", { ascending: false });
-  if (error) throw error;
-  return data.map((row) => ({
-    id: row.id, date: row.date, start: row.start_time, end: row.end_time,
-    lieu: row.lieu || "", client: row.client || "", notes: row.notes || "",
-  }));
-}
-async function sbUpsertEntry(entry) {
-  const { error } = await supabase.from("interventions").upsert({
-    id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null,
-  });
-  if (error) throw error;
-}
-async function sbDeleteEntry(id) {
-  const { error } = await supabase.from("interventions").delete().eq("id", id);
-  if (error) throw error;
-}
-async function sbUploadPhoto(entryId, uid, dataUrl) {
-  const blob = dataUrlToBlob(dataUrl);
-  const path = `${entryId}/${uid}.jpg`;
-  const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, blob, {
-    contentType: "image/jpeg", upsert: true,
-  });
-  if (error) throw error;
-  const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-}
-async function sbListPhotos(entryId) {
-  const { data, error } = await supabase.storage.from(PHOTOS_BUCKET).list(entryId, { limit: 100 });
-  if (error || !data) return [];
-  return data.map((it) => {
-    const { data: pub } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(`${entryId}/${it.name}`);
-    return { uid: it.name.replace(/\.jpg$/, ""), dataUrl: pub.publicUrl, status: "ok" };
-  });
-}
-async function sbDeletePhoto(entryId, uid) {
-  await supabase.storage.from(PHOTOS_BUCKET).remove([`${entryId}/${uid}.jpg`]).catch(() => {});
-}
-async function sbDeleteAllPhotos(entryId) {
-  const photos = await sbListPhotos(entryId);
-  if (photos.length) await supabase.storage.from(PHOTOS_BUCKET).remove(photos.map((p) => `${entryId}/${p.uid}.jpg`));
-}
-
-// --- Petites icônes (emoji, pour rester autonome sans librairie d'icônes) ---
-const Icon = ({ children, size = 14, style }) => (
-  <span style={{ fontSize: size, lineHeight: 1, display: "inline-flex", ...style }}>{children}</span>
-);
-
-function DigitBox({ ch, color }) {
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: "1.4ch", minWidth: 20, height: 32, background: "#0A2620",
-      border: `1px solid ${COLORS.border}`, borderRadius: 3, color,
-      fontFamily: "'Space Mono', monospace", fontWeight: 700, fontSize: 18,
-      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.5)",
-    }}>{ch}</span>
-  );
-}
-
-function HourMeter({ totalMinutes, label, color, hourDigits = 4 }) {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  const hStr = String(Math.min(h, Math.pow(10, hourDigits) - 1)).padStart(hourDigits, "0");
-  return (
-    <div style={{
-      flex: 1, minWidth: 0, background: "linear-gradient(180deg, #2A3234, #1A2022)",
-      border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "12px 10px",
-      display: "flex", flexDirection: "column", gap: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
-    }}>
-      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: "0.14em", color, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-        <div style={{ display: "flex", gap: 2 }}>{hStr.split("").map((ch, i) => <DigitBox key={i} ch={ch} color={color} />)}</div>
-        <span style={{ fontFamily: "'Space Mono', monospace", color: COLORS.inkDim, fontSize: 13, marginBottom: 5 }}>h</span>
-        <div style={{ display: "flex", gap: 2 }}>{String(m).padStart(2, "0").split("").map((ch, i) => <DigitBox key={i} ch={ch} color={color} />)}</div>
-      </div>
-    </div>
-  );
-}
-
-function PhotoField({ photos, busy, loading, onFiles, onRemove }) {
-  const inputRef = useRef(null);
-  const okCount = photos.filter((p) => p.status === "ok").length;
-  const errorPhotos = photos.filter((p) => p.status === "error");
-  return (
-    <Field label={`Photos${photos.length ? ` (${okCount}/${MAX_PHOTOS})` : ""}`}>
-      {loading ? (
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: COLORS.inkDim }}>Chargement des photos…</div>
-      ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {photos.map((p) => (
-            <div key={p.uid} style={{ position: "relative", width: 72, height: 72, borderRadius: 6, overflow: "hidden", border: `1px solid ${p.status === "error" ? COLORS.danger : COLORS.border}`, flexShrink: 0, background: "#0A2620" }}>
-              {p.dataUrl ? (
-                <img src={p.dataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              ) : (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {p.status === "uploading" ? <span style={{ fontSize: 10, color: COLORS.inkDim }}>…</span> : <Icon size={18}>⚠️</Icon>}
-                </div>
-              )}
-              <button onClick={() => onRemove(p.uid)} style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(10,12,13,0.75)", border: "none", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, fontSize: 11 }}>✕</button>
-            </div>
-          ))}
-          {okCount < MAX_PHOTOS && (
-            <button onClick={() => inputRef.current?.click()} disabled={busy} style={{ width: 72, height: 72, borderRadius: 6, border: `1px dashed ${COLORS.border}`, background: "transparent", color: COLORS.inkDim, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: busy ? "default" : "pointer", flexShrink: 0 }}>
-              {busy ? <span style={{ fontSize: 10 }}>…</span> : <><Icon size={18}>📷</Icon><span style={{ fontSize: 10, fontFamily: "'Inter', sans-serif" }}>Ajouter</span></>}
-            </button>
-          )}
-        </div>
-      )}
-      {errorPhotos.map((p) => (
-        <div key={`err-${p.uid}`} style={{ color: COLORS.danger, fontFamily: "'Inter', sans-serif", fontSize: 11.5, marginTop: 4 }}>Échec : {p.error}</div>
-      ))}
-      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }} />
-    </Field>
-  );
-}
-
-function Ticket({ entry, photoCount, onEdit, onDeleteRequest, pendingDelete, onConfirmDelete, onCancelDelete }) {
-  const dur = durationMinutes(entry.start, entry.end);
-  const overtime = overtimeMinutes(entry.start, entry.end);
-  return (
-    <div style={{ position: "relative", display: "flex", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ width: 14, flexShrink: 0, backgroundImage: `radial-gradient(circle, ${COLORS.bg} 2.5px, transparent 2.6px)`, backgroundSize: "14px 14px", backgroundPosition: "center", borderRight: `1px dashed ${COLORS.border}` }} />
-      <button onClick={() => onEdit(entry)} style={{ flex: 1, textAlign: "left", padding: "12px 14px", background: "transparent", border: "none", cursor: "pointer" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 15, color: COLORS.ink, textTransform: "capitalize" }}>{fmtDateShort(entry.date)}</span>
-          <span style={{ fontFamily: "'Space Mono', monospace", fontWeight: 700, fontSize: 16, color: COLORS.amberLight }}>{fmtDuration(dur)}</span>
-        </div>
-        <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: COLORS.inkDim, marginTop: 2 }}>{entry.start} → {entry.end}</div>
-        {overtime > 0 && <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: COLORS.amberLight, marginTop: 3 }}>+ {fmtDuration(overtime)} heures sup.</div>}
-        {(entry.lieu || entry.client || photoCount > 0) && (
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: COLORS.ink }}>
-            {entry.lieu && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon size={12}>📍</Icon>{entry.lieu}</span>}
-            {entry.client && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon size={12}>👤</Icon>{entry.client}</span>}
-            {photoCount > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon size={12}>📷</Icon>{photoCount}</span>}
-          </div>
-        )}
-        {entry.notes && <div style={{ marginTop: 6, fontFamily: "'Inter', sans-serif", fontSize: 12.5, color: COLORS.inkDim, fontStyle: "italic", display: "flex", gap: 4 }}><Icon size={12}>📝</Icon><span>{entry.notes}</span></div>}
-      </button>
-      {pendingDelete ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 8, justifyContent: "center", borderLeft: `1px solid ${COLORS.border}` }}>
-          <button onClick={() => onConfirmDelete(entry.id)} style={{ background: COLORS.danger, color: "#fff", border: "none", borderRadius: 5, fontSize: 11, fontFamily: "'Inter', sans-serif", fontWeight: 600, padding: "5px 8px", cursor: "pointer" }}>Supprimer</button>
-          <button onClick={onCancelDelete} style={{ background: "transparent", color: COLORS.inkDim, border: `1px solid ${COLORS.border}`, borderRadius: 5, fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "5px 8px", cursor: "pointer" }}>Annuler</button>
-        </div>
-      ) : (
-        <button onClick={() => onDeleteRequest(entry.id)} style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 12px", background: "transparent", border: "none", borderLeft: `1px solid ${COLORS.border}`, cursor: "pointer", color: COLORS.inkDim, fontSize: 15 }}>🗑</button>
-      )}
-    </div>
-  );
-}
-
-function FormSheet({ form, setForm, onSave, onClose, onDelete, isEdit, error, photosLoading }) {
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const handleFiles = async (fileList) => {
-    const currentOk = (form.photos || []).filter((p) => p.status !== "error").length;
-    const files = Array.from(fileList).slice(0, Math.max(MAX_PHOTOS - currentOk, 0));
-    if (!files.length) return;
-    setPhotoBusy(true);
-    for (const file of files) {
-      const uid = genId();
-      setForm((prev) => ({ ...prev, photos: [...(prev.photos || []), { uid, dataUrl: null, status: "uploading" }] }));
-      try {
-        const compressed = await compressImage(file);
-        const publicUrl = await sbUploadPhoto(form.id, uid, compressed);
-        setForm((prev) => ({ ...prev, photos: (prev.photos || []).map((p) => p.uid === uid ? { uid, dataUrl: publicUrl, status: "ok" } : p) }));
-      } catch (e) {
-        setForm((prev) => ({ ...prev, photos: (prev.photos || []).map((p) => p.uid === uid ? { uid, dataUrl: null, status: "error", error: e.message || String(e) } : p) }));
-      }
-    }
-    setPhotoBusy(false);
-  };
-  const handleRemovePhoto = (uid) => {
-    const photo = (form.photos || []).find((p) => p.uid === uid);
-    setForm((prev) => ({ ...prev, photos: (prev.photos || []).filter((p) => p.uid !== uid) }));
-    if (photo?.status === "ok") sbDeletePhoto(form.id, uid);
-  };
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,13,0.72)", display: "flex", alignItems: "flex-end", zIndex: 50 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, margin: "0 auto", maxHeight: "88vh", overflowY: "auto", background: COLORS.surfaceRaised, borderTop: `1px solid ${COLORS.border}`, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: "18px 18px 24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 18, fontWeight: 600, color: COLORS.ink, textTransform: "uppercase", letterSpacing: "0.04em", margin: 0 }}>{isEdit ? "Modifier" : "Nouvelle intervention"}</h2>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: COLORS.inkDim, cursor: "pointer", padding: 4, fontSize: 20 }}>✕</button>
-        </div>
-        {error && <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(193,85,74,0.12)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 6, padding: "8px 10px", fontFamily: "'Inter', sans-serif", fontSize: 12.5, marginBottom: 12 }}><Icon size={14}>⚠️</Icon>{error}</div>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Field label="Date"><input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle} /></Field>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Field label="Début" style={{ flex: 1 }}><input type="time" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} style={inputStyle} /></Field>
-            <Field label="Fin" style={{ flex: 1 }}><input type="time" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} style={inputStyle} /></Field>
-          </div>
-          <Field label="Lieu"><input type="text" placeholder="Ex. Chantier rue de la Paix" value={form.lieu} onChange={(e) => setForm({ ...form, lieu: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Client"><input type="text" placeholder="Ex. M. Dupont" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} style={inputStyle} /></Field>
-          <Field label="Notes"><textarea placeholder="Détails de l'intervention…" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "'Inter', sans-serif" }} /></Field>
-          <PhotoField photos={form.photos || []} busy={photoBusy} loading={photosLoading} onFiles={handleFiles} onRemove={handleRemovePhoto} />
-        </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-          {isEdit && <button onClick={onDelete} style={{ ...btnStyle, background: "transparent", border: `1px solid ${COLORS.danger}`, color: COLORS.danger, flex: "0 0 auto" }}>🗑</button>}
-          <button onClick={onSave} style={{ ...btnStyle, background: COLORS.amber, color: "#F2EFE6", flex: 1, fontWeight: 700 }}>{isEdit ? "Enregistrer" : "Ajouter"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const inputStyle = { width: "100%", boxSizing: "border-box", background: "#0F1213", border: `1px solid ${COLORS.border}`, borderRadius: 7, padding: "10px 12px", color: COLORS.ink, fontFamily: "'Inter', sans-serif", fontSize: 15, outline: "none" };
-const btnStyle = { border: "none", borderRadius: 8, padding: "12px 16px", fontFamily: "'Inter', sans-serif", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
-function Field({ label, children, style }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5, ...style }}>
-      <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: COLORS.inkDim }}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function CarnetInterventions() {
-  const [entries, setEntries] = useState([]);
-  const [photoCounts, setPhotoCounts] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm());
-  const [formError, setFormError] = useState(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState(null);
-  const [isEditingExisting, setIsEditingExisting] = useState(false);
-  const [photosLoading, setPhotosLoading] = useState(false);
-
-  const loadEntries = async () => {
-    setLoading(true); setLoadError(null);
-    try {
-      const rows = await sbFetchEntries();
-      setEntries(rows);
-      Promise.all(rows.map(async (r) => [r.id, (await sbListPhotos(r.id)).length]))
-        .then((pairs) => setPhotoCounts(Object.fromEntries(pairs)));
-    } catch (e) {
-      setLoadError(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { loadEntries(); }, []);
-
-  const openNew = () => { setForm({ ...emptyForm(), id: genId() }); setFormError(null); setIsEditingExisting(false); setShowForm(true); };
-  const openEdit = (entry) => {
-    setForm({ ...entry, photos: [] }); setFormError(null); setIsEditingExisting(true); setShowForm(true); setPhotosLoading(true);
-    sbListPhotos(entry.id).then((photos) => { setForm((prev) => prev.id === entry.id ? { ...prev, photos } : prev); setPhotosLoading(false); });
-  };
-  const closeForm = () => { setShowForm(false); setFormError(null); };
-
-  const saveEntry = async () => {
-    if (!form.date || !form.start || !form.end) { setFormError("Renseigne au moins la date, l'heure de début et de fin."); return; }
-    setFormError(null);
-    const { photos = [], ...rest } = form;
-    try {
-      await sbUpsertEntry(rest);
-      setPhotoCounts((prev) => ({ ...prev, [rest.id]: photos.filter((p) => p.status === "ok").length }));
-      await loadEntries();
-      setIsEditingExisting(true);
-      setShowForm(false);
-    } catch (e) {
-      setFormError(`L'enregistrement a échoué. Détail : ${e.message || String(e)}`);
-    }
-  };
-
-  const deleteFromForm = async () => {
-    try { await sbDeleteEntry(form.id); await sbDeleteAllPhotos(form.id); await loadEntries(); setShowForm(false); }
-    catch (e) { setFormError(`La suppression a échoué. Détail : ${e.message || String(e)}`); }
-  };
-  const confirmDelete = async (id) => {
-    try { await sbDeleteEntry(id); await sbDeleteAllPhotos(id); await loadEntries(); } catch (e) { console.error(e); }
-    setPendingDeleteId(null);
-  };
-
-  const totalMinutes = useMemo(() => entries.reduce((s, e) => s + durationMinutes(e.start, e.end), 0), [entries]);
-  const totalOvertimeMinutes = useMemo(() => entries.reduce((s, e) => s + overtimeMinutes(e.start, e.end), 0), [entries]);
-  const grouped = useMemo(() => {
-    const map = {};
-    for (const e of entries) { const key = monthKey(e.date); (map[key] = map[key] || []).push(e); }
-    return Object.keys(map).sort((a, b) => (a < b ? 1 : -1)).map((key) => {
-      const list = map[key].sort((a, b) => a.date !== b.date ? (a.date < b.date ? 1 : -1) : (a.start < b.start ? 1 : -1));
-      const subtotal = list.reduce((s, e) => s + durationMinutes(e.start, e.end), 0);
-      return { key, list, subtotal };
+// --- Accès Supabase ---
+function sbFetchEntries() {
+  return sb.from("interventions").select("*").order("date", { ascending: false }).order("start_time", { ascending: false })
+    .then(function (res) {
+      if (res.error) throw res.error;
+      return res.data.map(function (row) {
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "" };
+      });
     });
-  }, [entries]);
-
-  return (
-    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, fontFamily: "'Inter', sans-serif", paddingBottom: 100 }}>
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, gap: 12 }}>
-          <div>
-            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: "0.22em", color: COLORS.teal, textTransform: "uppercase", marginBottom: 4 }}>Carnet de bord</div>
-            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700, margin: 0, color: COLORS.ink }}>Mes interventions</h1>
-          </div>
-          <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px" }}>
-            <svg width="14" height="26" viewBox="0 0 14 26"><polygon points="0,0 14,0 4,26 0,26" fill={COLORS.amber} /></svg>
-            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 15, color: COLORS.ink }}>DMP</span>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 15, color: COLORS.ink, marginTop: 1 }}>LOC</span>
-            </div>
-          </div>
-        </div>
-
-        {loadError && (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(193,85,74,0.14)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 8, padding: "10px 12px", fontSize: 12, marginBottom: 14, lineHeight: 1.4 }}>
-            <Icon size={15}>⚠️</Icon>
-            <div style={{ flex: 1 }}>Connexion à la base impossible : {loadError}
-              <button onClick={loadEntries} style={{ display: "block", marginTop: 6, background: "transparent", border: `1px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 5, padding: "4px 8px", fontSize: 11.5, cursor: "pointer" }}>Réessayer</button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ color: COLORS.inkDim, padding: "40px 0", textAlign: "center" }}>Chargement…</div>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 10 }}>
-              <HourMeter totalMinutes={totalMinutes} label="Total cumulé" color={COLORS.tealLight} hourDigits={4} />
-              <HourMeter totalMinutes={totalOvertimeMinutes} label="Heures sup." color={COLORS.amberLight} hourDigits={3} />
-            </div>
-            <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 22 }}>
-              {entries.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 16px", color: COLORS.inkDim, border: `1px dashed ${COLORS.border}`, borderRadius: 10 }}>
-                  <div style={{ fontSize: 28, marginBottom: 10 }}>⏰</div>
-                  <div style={{ fontSize: 14 }}>Aucune intervention enregistrée.<br />Ajoute la première avec le bouton +.</div>
-                </div>
-              ) : grouped.map(({ key, list, subtotal }) => (
-                <div key={key}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${COLORS.border}` }}>
-                    <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: "0.06em", color: COLORS.teal, textTransform: "uppercase" }}>{monthLabel(key)}</span>
-                    <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, color: COLORS.inkDim }}>{fmtDuration(subtotal)}</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {list.map((entry) => (
-                      <Ticket key={entry.id} entry={entry} photoCount={photoCounts[entry.id] || 0} onEdit={openEdit} onDeleteRequest={setPendingDeleteId} pendingDelete={pendingDeleteId === entry.id} onConfirmDelete={confirmDelete} onCancelDelete={() => setPendingDeleteId(null)} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <button onClick={openNew} style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: COLORS.amber, border: "none", color: "#F2EFE6", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 18px rgba(232,149,47,0.4)", cursor: "pointer", fontSize: 26 }}>＋</button>
-      {showForm && <FormSheet form={form} setForm={setForm} onSave={saveEntry} onClose={closeForm} onDelete={deleteFromForm} isEdit={isEditingExisting} error={formError} photosLoading={photosLoading} />}
-    </div>
-  );
+}
+function sbUpsertEntry(entry) {
+  return sb.from("interventions").upsert({
+    id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null
+  }).then(function (res) { if (res.error) throw res.error; });
+}
+function sbDeleteEntry(id) {
+  return sb.from("interventions").delete().eq("id", id).then(function (res) { if (res.error) throw res.error; });
+}
+function sbUploadPhoto(entryId, uid, dataUrl) {
+  var blob = dataUrlToBlob(dataUrl);
+  var path = entryId + "/" + uid + ".jpg";
+  return sb.storage.from(PHOTOS_BUCKET).upload(path, blob, { contentType: "image/jpeg", upsert: true })
+    .then(function (res) {
+      if (res.error) throw res.error;
+      return sb.storage.from(PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
+    });
+}
+function sbListPhotos(entryId) {
+  return sb.storage.from(PHOTOS_BUCKET).list(entryId, { limit: 100 }).then(function (res) {
+    if (res.error || !res.data) return [];
+    return res.data.map(function (it) {
+      var url = sb.storage.from(PHOTOS_BUCKET).getPublicUrl(entryId + "/" + it.name).data.publicUrl;
+      return { uid: it.name.replace(/\.jpg$/, ""), dataUrl: url, status: "ok" };
+    });
+  }).catch(function () { return []; });
+}
+function sbDeletePhoto(entryId, uid) {
+  return sb.storage.from(PHOTOS_BUCKET).remove([entryId + "/" + uid + ".jpg"]).catch(function () {});
+}
+function sbDeleteAllPhotos(entryId) {
+  return sbListPhotos(entryId).then(function (photos) {
+    if (!photos.length) return;
+    return sb.storage.from(PHOTOS_BUCKET).remove(photos.map(function (p) { return entryId + "/" + p.uid + ".jpg"; }));
+  });
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<CarnetInterventions />);
+// --- État de l'application ---
+var state = {
+  entries: [],
+  photoCounts: {},
+  loading: true,
+  loadError: null,
+  pendingDeleteId: null
+};
+
+var form = null;
+
+var root = document.getElementById("root");
+
+// --- Rendu de la liste principale ---
+function renderRoot() {
+  var totalMinutes = state.entries.reduce(function (s, e) { return s + durationMinutes(e.start, e.end); }, 0);
+  var totalOvertime = state.entries.reduce(function (s, e) { return s + overtimeMinutes(e.start, e.end); }, 0);
+
+  var grouped = {};
+  state.entries.forEach(function (e) {
+    var k = monthKey(e.date);
+    (grouped[k] = grouped[k] || []).push(e);
+  });
+  var monthKeys = Object.keys(grouped).sort().reverse();
+
+  var html = '';
+  html += '<div style="min-height:100vh;padding-bottom:100px;">';
+  html += '<div style="max-width:480px;margin:0 auto;padding:20px 16px;">';
+
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:12px;">';
+  html += '<div><div style="font-family:\'Oswald\',sans-serif;font-size:12px;letter-spacing:0.22em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:4px;">Carnet de bord</div>';
+  html += '<h1 style="font-family:\'Oswald\',sans-serif;font-size:26px;font-weight:700;margin:0;">Mes interventions</h1></div>';
+  html += '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:6px 10px;">';
+  html += '<svg width="14" height="26" viewBox="0 0 14 26"><polygon points="0,0 14,0 4,26 0,26" fill="' + COLORS.amber + '"/></svg>';
+  html += '<div style="display:flex;flex-direction:column;line-height:1;"><span style="font-family:\'Oswald\',sans-serif;font-weight:700;font-size:15px;">DMP</span><span style="font-family:\'Oswald\',sans-serif;font-weight:700;font-size:15px;margin-top:1px;">LOC</span></div></div>';
+  html += '</div>';
+
+  if (state.loadError) {
+    html += '<div style="display:flex;align-items:flex-start;gap:8px;background:rgba(193,85,74,0.14);border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:14px;line-height:1.4;">';
+    html += '⚠️<div style="flex:1;">Connexion à la base impossible : ' + esc(state.loadError) + '<button id="btn-retry" style="display:block;margin-top:6px;background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';border-radius:5px;padding:4px 8px;font-size:11.5px;">Réessayer</button></div></div>';
+  }
+
+  if (state.loading) {
+    html += '<div style="color:' + COLORS.inkDim + ';padding:40px 0;text-align:center;">Chargement…</div>';
+  } else {
+    html += '<div style="display:flex;gap:10px;">' + hourMeterHTML(totalMinutes, "Total cumulé", COLORS.tealLight, 4) + hourMeterHTML(totalOvertime, "Heures sup.", COLORS.amberLight, 3) + '</div>';
+
+    html += '<div style="margin-top:24px;display:flex;flex-direction:column;gap:22px;">';
+    if (state.entries.length === 0) {
+      html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.</div></div>';
+    } else {
+      monthKeys.forEach(function (key) {
+        var list = grouped[key].slice().sort(function (a, b) {
+          if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+          return a.start < b.start ? 1 : -1;
+        });
+        var subtotal = list.reduce(function (s, e) { return s + durationMinutes(e.start, e.end); }, 0);
+        html += '<div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ' + COLORS.border + ';">';
+        html += '<span style="font-family:\'Oswald\',sans-serif;font-size:13px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;">' + esc(monthLabel(key)) + '</span>';
+        html += '<span style="font-family:\'Space Mono\',monospace;font-size:13px;color:' + COLORS.inkDim + ';">' + fmtDuration(subtotal) + '</span></div>';
+        html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+        list.forEach(function (entry) { html += ticketHTML(entry); });
+        html += '</div></div>';
+      });
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+  html += '<button id="btn-new" aria-label="Ajouter une intervention" style="position:fixed;bottom:24px;right:24px;width:58px;height:58px;border-radius:50%;background:' + COLORS.amber + ';border:none;color:#F2EFE6;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(232,149,47,0.4);font-size:26px;">＋</button>';
+  html += '</div>';
+
+  root.innerHTML = html;
+  attachRootListeners();
+}
+
+function hourMeterHTML(totalMinutes, label, color, hourDigits) {
+  var h = Math.floor(totalMinutes / 60), m = totalMinutes % 60;
+  var hStr = String(Math.min(h, Math.pow(10, hourDigits) - 1)).padStart(hourDigits, "0");
+  function digits(str) {
+    return str.split("").map(function (ch) {
+      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:#0A2620;border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
+    }).join('');
+  }
+  var out = '<div style="flex:1;min-width:0;background:linear-gradient(180deg,#2A3234,#1A2022);border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 10px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
+  out += '<div style="font-family:\'Oswald\',sans-serif;font-size:10.5px;letter-spacing:0.14em;color:' + color + ';text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</div>';
+  out += '<div style="display:flex;align-items:flex-end;gap:4px;"><div style="display:flex;gap:2px;">' + digits(hStr) + '</div>';
+  out += '<span style="font-family:\'Space Mono\',monospace;color:' + COLORS.inkDim + ';font-size:13px;margin-bottom:5px;">h</span>';
+  out += '<div style="display:flex;gap:2px;">' + digits(String(m).padStart(2, "0")) + '</div></div></div>';
+  return out;
+}
+
+function ticketHTML(entry) {
+  var dur = durationMinutes(entry.start, entry.end);
+  var overtime = overtimeMinutes(entry.start, entry.end);
+  var photoCount = state.photoCounts[entry.id] || 0;
+  var pendingDelete = state.pendingDeleteId === entry.id;
+
+  var out = '<div style="position:relative;display:flex;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;overflow:hidden;">';
+  out += '<div style="width:14px;flex-shrink:0;background-image:radial-gradient(circle,' + COLORS.bg + ' 2.5px,transparent 2.6px);background-size:14px 14px;background-position:center;border-right:1px dashed ' + COLORS.border + ';"></div>';
+  out += '<button class="ticket-edit" data-id="' + esc(entry.id) + '" style="flex:1;text-align:left;padding:12px 14px;background:transparent;border:none;">';
+  out += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
+  out += '<span style="font-family:\'Oswald\',sans-serif;font-weight:600;font-size:15px;text-transform:capitalize;">' + esc(fmtDateShort(entry.date)) + '</span>';
+  out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + COLORS.amberLight + ';">' + fmtDuration(dur) + '</span></div>';
+  out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
+  if (overtime > 0) out += '<div style="font-size:12px;font-weight:600;color:' + COLORS.amberLight + ';margin-top:3px;">+ ' + fmtDuration(overtime) + ' heures sup.</div>';
+  if (entry.lieu || entry.client || photoCount > 0) {
+    out += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;">';
+    if (entry.lieu) out += '<span>📍 ' + esc(entry.lieu) + '</span>';
+    if (entry.client) out += '<span>👤 ' + esc(entry.client) + '</span>';
+    if (photoCount > 0) out += '<span>📷 ' + photoCount + '</span>';
+    out += '</div>';
+  }
+  if (entry.notes) out += '<div style="margin-top:6px;font-size:12.5px;color:' + COLORS.inkDim + ';font-style:italic;">📝 ' + esc(entry.notes) + '</div>';
+  out += '</button>';
+
+  if (pendingDelete) {
+    out += '<div style="display:flex;flex-direction:column;gap:4px;padding:8px;justify-content:center;border-left:1px solid ' + COLORS.border + ';">';
+    out += '<button class="ticket-confirm-delete" data-id="' + esc(entry.id) + '" style="background:' + COLORS.danger + ';color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:5px 8px;">Supprimer</button>';
+    out += '<button class="ticket-cancel-delete" style="background:transparent;color:' + COLORS.inkDim + ';border:1px solid ' + COLORS.border + ';border-radius:5px;font-size:11px;padding:5px 8px;">Annuler</button></div>';
+  } else {
+    out += '<button class="ticket-delete" data-id="' + esc(entry.id) + '" style="display:flex;align-items:center;justify-content:center;padding:0 12px;background:transparent;border:none;border-left:1px solid ' + COLORS.border + ';color:' + COLORS.inkDim + ';font-size:15px;">🗑</button>';
+  }
+  out += '</div>';
+  return out;
+}
+
+function attachRootListeners() {
+  var btnNew = document.getElementById("btn-new");
+  if (btnNew) btnNew.onclick = openNewForm;
+  var btnRetry = document.getElementById("btn-retry");
+  if (btnRetry) btnRetry.onclick = loadEntries;
+
+  document.querySelectorAll(".ticket-edit").forEach(function (btn) {
+    btn.onclick = function () {
+      var id = btn.getAttribute("data-id");
+      var entry = state.entries.find(function (e) { return e.id === id; });
+      if (entry) openEditForm(entry);
+    };
+  });
+  document.querySelectorAll(".ticket-delete").forEach(function (btn) {
+    btn.onclick = function () { state.pendingDeleteId = btn.getAttribute("data-id"); renderRoot(); };
+  });
+  document.querySelectorAll(".ticket-cancel-delete").forEach(function (btn) {
+    btn.onclick = function () { state.pendingDeleteId = null; renderRoot(); };
+  });
+  document.querySelectorAll(".ticket-confirm-delete").forEach(function (btn) {
+    btn.onclick = function () { confirmDeleteEntry(btn.getAttribute("data-id")); };
+  });
+}
+
+function loadEntries() {
+  state.loading = true; state.loadError = null; renderRoot();
+  sbFetchEntries().then(function (rows) {
+    state.entries = rows;
+    state.loading = false;
+    renderRoot();
+    Promise.all(rows.map(function (r) { return sbListPhotos(r.id).then(function (p) { return [r.id, p.length]; }); }))
+      .then(function (pairs) {
+        var counts = {};
+        pairs.forEach(function (p) { counts[p[0]] = p[1]; });
+        state.photoCounts = counts;
+        renderRoot();
+      });
+  }).catch(function (e) {
+    state.loadError = (e && e.message) ? e.message : String(e);
+    state.loading = false;
+    renderRoot();
+  });
+}
+
+function confirmDeleteEntry(id) {
+  sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
+    state.pendingDeleteId = null;
+    loadEntries();
+  }).catch(function (e) { console.error(e); state.pendingDeleteId = null; renderRoot(); });
+}
+
+// --- Formulaire (modale) ---
+function openNewForm() {
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  renderForm();
+}
+function openEditForm(entry) {
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  renderForm();
+  sbListPhotos(entry.id).then(function (photos) {
+    if (!form || form.id !== entry.id) return;
+    form.photos = photos; form.photosLoading = false;
+    renderPhotoGrid();
+  });
+}
+function closeForm() {
+  var modal = document.getElementById("form-modal");
+  if (modal) modal.remove();
+  form = null;
+}
+
+function renderForm() {
+  var existing = document.getElementById("form-modal");
+  if (existing) existing.remove();
+
+  var wrap = document.createElement("div");
+  wrap.id = "form-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:50;";
+  wrap.onclick = function (e) { if (e.target === wrap) closeForm(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;max-height:88vh;overflow-y:auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:18px 18px 24px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+  html += '<h2 style="font-family:\'Oswald\',sans-serif;font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin:0;">' + (form.isEditingExisting ? "Modifier" : "Nouvelle intervention") + '</h2>';
+  html += '<button id="f-close" style="background:transparent;border:none;color:' + COLORS.inkDim + ';padding:4px;font-size:20px;">✕</button></div>';
+
+  html += '<div id="f-error-box"></div>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:12px;">';
+  html += '<label class="field"><span>Date</span><input id="f-date" type="date" value="' + esc(form.date) + '"/></label>';
+  html += '<div style="display:flex;gap:10px;"><label class="field" style="flex:1;"><span>Début</span><input id="f-start" type="time" value="' + esc(form.start) + '"/></label>';
+  html += '<label class="field" style="flex:1;"><span>Fin</span><input id="f-end" type="time" value="' + esc(form.end) + '"/></label></div>';
+  html += '<label class="field"><span>Lieu</span><input id="f-lieu" type="text" placeholder="Ex. Chantier rue de la Paix" value="' + esc(form.lieu) + '"/></label>';
+  html += '<label class="field"><span>Client</span><input id="f-client" type="text" placeholder="Ex. M. Dupont" value="' + esc(form.client) + '"/></label>';
+  html += '<label class="field"><span>Notes</span><textarea id="f-notes" rows="3" placeholder="Détails de l\'intervention…" style="resize:vertical;">' + esc(form.notes) + '</textarea></label>';
+
+  html += '<label class="field"><span id="f-photos-label">Photos</span><div id="f-photos-grid"></div><input id="f-photo-input" type="file" accept="image/*" multiple style="display:none;"/></label>';
+  html += '</div>';
+
+  html += '<div style="display:flex;gap:10px;margin-top:20px;">';
+  if (form.isEditingExisting) html += '<button id="f-delete" class="btn" style="background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';flex:0 0 auto;">🗑</button>';
+  html += '<button id="f-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;flex:1;font-weight:700;">' + (form.isEditingExisting ? "Enregistrer" : "Ajouter") + '</button>';
+  html += '</div>';
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  document.getElementById("f-close").onclick = closeForm;
+  document.getElementById("f-save").onclick = saveForm;
+  var delBtn = document.getElementById("f-delete");
+  if (delBtn) delBtn.onclick = deleteFromForm;
+  document.getElementById("f-photo-input").onchange = function (e) {
+    if (e.target.files && e.target.files.length) handleFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  renderPhotoGrid();
+  renderFormError();
+}
+
+function renderFormError() {
+  var box = document.getElementById("f-error-box");
+  if (!box) return;
+  if (form.error) {
+    box.innerHTML = '<div style="display:flex;align-items:center;gap:6px;background:rgba(193,85,74,0.12);border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';border-radius:6px;padding:8px 10px;font-size:12.5px;margin-bottom:12px;">⚠️ ' + esc(form.error) + '</div>';
+  } else {
+    box.innerHTML = '';
+  }
+}
+
+function renderPhotoGrid() {
+  var grid = document.getElementById("f-photos-grid");
+  var label = document.getElementById("f-photos-label");
+  if (!grid) return;
+  var okCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
+  if (label) label.textContent = "Photos" + (form.photos.length ? " (" + okCount + "/" + MAX_PHOTOS + ")" : "");
+
+  if (form.photosLoading) {
+    grid.innerHTML = '<div style="font-size:12.5px;color:' + COLORS.inkDim + ';">Chargement des photos…</div>';
+    return;
+  }
+
+  var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+  form.photos.forEach(function (p) {
+    html += '<div style="position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;border:1px solid ' + (p.status === "error" ? COLORS.danger : COLORS.border) + ';flex-shrink:0;background:#0A2620;">';
+    if (p.dataUrl) {
+      html += '<img src="' + esc(p.dataUrl) + '" style="width:100%;height:100%;object-fit:cover;display:block;"/>';
+    } else {
+      html += '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">' + (p.status === "uploading" ? '<span style="font-size:10px;color:' + COLORS.inkDim + ';">…</span>' : '⚠️') + '</div>';
+    }
+    html += '<button class="photo-remove" data-uid="' + esc(p.uid) + '" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(10,12,13,0.75);border:none;color:#fff;font-size:11px;">✕</button></div>';
+  });
+  if (okCount < MAX_PHOTOS) {
+    html += '<button id="photo-add" style="width:72px;height:72px;border-radius:6px;border:1px dashed ' + COLORS.border + ';background:transparent;color:' + COLORS.inkDim + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">' + (form.photoBusy ? '<span style="font-size:10px;">…</span>' : '<span style="font-size:18px;">📷</span><span style="font-size:10px;">Ajouter</span>') + '</button>';
+  }
+  html += '</div>';
+  form.photos.filter(function (p) { return p.status === "error"; }).forEach(function (p) {
+    html += '<div style="color:' + COLORS.danger + ';font-size:11.5px;margin-top:4px;">Échec : ' + esc(p.error || "") + '</div>';
+  });
+  grid.innerHTML = html;
+
+  var addBtn = document.getElementById("photo-add");
+  if (addBtn) addBtn.onclick = function () { document.getElementById("f-photo-input").click(); };
+  grid.querySelectorAll(".photo-remove").forEach(function (btn) {
+    btn.onclick = function () { removePhoto(btn.getAttribute("data-uid")); };
+  });
+}
+
+function handleFiles(fileList) {
+  var currentOk = form.photos.filter(function (p) { return p.status !== "error"; }).length;
+  var files = Array.prototype.slice.call(fileList, 0, Math.max(MAX_PHOTOS - currentOk, 0));
+  if (!files.length) return;
+  form.photoBusy = true;
+  renderPhotoGrid();
+
+  var chain = Promise.resolve();
+  files.forEach(function (file) {
+    chain = chain.then(function () {
+      var uid = genId();
+      form.photos.push({ uid: uid, dataUrl: null, status: "uploading" });
+      renderPhotoGrid();
+      return compressImage(file).then(function (compressed) {
+        return sbUploadPhoto(form.id, uid, compressed);
+      }).then(function (publicUrl) {
+        var p = form.photos.find(function (x) { return x.uid === uid; });
+        if (p) { p.dataUrl = publicUrl; p.status = "ok"; }
+        renderPhotoGrid();
+      }).catch(function (e) {
+        var p = form.photos.find(function (x) { return x.uid === uid; });
+        if (p) { p.dataUrl = null; p.status = "error"; p.error = (e && e.message) ? e.message : String(e); }
+        renderPhotoGrid();
+      });
+    });
+  });
+  chain.then(function () { form.photoBusy = false; renderPhotoGrid(); });
+}
+
+function removePhoto(uid) {
+  var p = form.photos.find(function (x) { return x.uid === uid; });
+  form.photos = form.photos.filter(function (x) { return x.uid !== uid; });
+  renderPhotoGrid();
+  if (p && p.status === "ok") sbDeletePhoto(form.id, uid);
+}
+
+function saveForm() {
+  var date = document.getElementById("f-date").value;
+  var start = document.getElementById("f-start").value;
+  var end = document.getElementById("f-end").value;
+  var lieu = document.getElementById("f-lieu").value;
+  var client = document.getElementById("f-client").value;
+  var notes = document.getElementById("f-notes").value;
+
+  if (!date || !start || !end) {
+    form.error = "Renseigne au moins la date, l'heure de début et de fin.";
+    renderFormError();
+    return;
+  }
+  form.error = null;
+  renderFormError();
+
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes };
+  var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
+
+  sbUpsertEntry(entry).then(function () {
+    state.photoCounts[entry.id] = okPhotosCount;
+    closeForm();
+    loadEntries();
+  }).catch(function (e) {
+    form.error = "L'enregistrement a échoué. Détail : " + ((e && e.message) ? e.message : String(e));
+    renderFormError();
+  });
+}
+
+function deleteFromForm() {
+  var id = form.id;
+  sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
+    closeForm();
+    loadEntries();
+  }).catch(function (e) {
+    form.error = "La suppression a échoué. Détail : " + ((e && e.message) ? e.message : String(e));
+    renderFormError();
+  });
+}
+
+// --- Démarrage ---
+loadEntries();
 </script>
 </body>
 </html>
