@@ -808,7 +808,8 @@ function showAuthScreen() {
       '<h2 style="font-family:\'Oswald\',sans-serif;font-size:17px;text-transform:uppercase;text-align:center;margin-bottom:16px;">' + (isSignUp ? "Créer un compte" : "Connexion") + '</h2>' +
       '<div id="auth-error" style="color:' + COLORS.danger + ';font-size:12.5px;margin-bottom:8px;text-align:center;"></div>' +
       '<label class="field" style="margin-bottom:10px;"><span>Email</span><input id="auth-email" type="email" autocomplete="email"/></label>' +
-      '<label class="field" style="margin-bottom:16px;"><span>Mot de passe</span><input id="auth-password" type="password" autocomplete="' + (isSignUp ? "new-password" : "current-password") + '"/></label>' +
+      '<label class="field" style="margin-bottom:12px;"><span>Mot de passe</span><input id="auth-password" type="password" autocomplete="' + (isSignUp ? "new-password" : "current-password") + '"/></label>' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:16px;color:' + COLORS.inkDim + ';"><input id="auth-remember" type="checkbox" checked style="width:16px;height:16px;accent-color:' + COLORS.amber + ';"/>Se souvenir de moi</label>' +
       '<button id="auth-submit" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;width:100%;font-weight:700;margin-bottom:10px;">' + (isSignUp ? "Créer le compte" : "Se connecter") + '</button>' +
       '<button id="auth-switch" style="background:transparent;border:none;color:' + COLORS.inkDim + ';width:100%;font-size:13px;text-align:center;">' + (isSignUp ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? En créer un") + '</button>' +
       '</div>';
@@ -817,6 +818,7 @@ function showAuthScreen() {
     document.getElementById("auth-submit").onclick = function () {
       var email = document.getElementById("auth-email").value.trim();
       var password = document.getElementById("auth-password").value;
+      var remember = document.getElementById("auth-remember").checked;
       var errBox = document.getElementById("auth-error");
       errBox.textContent = "";
       if (!email || !password) { errBox.textContent = "Renseigne un email et un mot de passe."; return; }
@@ -828,12 +830,22 @@ function showAuthScreen() {
           errBox.textContent = "Compte créé ! Vérifie tes emails pour confirmer, puis connecte-toi.";
           return;
         }
+        if (!remember) forgetSessionOnNextLaunch();
         // la session sera captée par onAuthStateChange
       });
     };
   }
   document.body.appendChild(wrap);
   render("signin");
+}
+// Si "Se souvenir de moi" est décoché, on retire le jeton persistant après connexion :
+// la session reste active pour cette utilisation, mais une reconnexion sera demandée au prochain lancement.
+function forgetSessionOnNextLaunch() {
+  try {
+    Object.keys(localStorage).forEach(function (k) {
+      if (/^sb-.*-auth-token$/.test(k)) localStorage.removeItem(k);
+    });
+  } catch (e) {}
 }
 function hideAuthScreen() {
   var el = document.getElementById("auth-screen");
@@ -882,7 +894,7 @@ function openMainMenu() {
   html += item("export-year", "🗓️ Exporter toute l'année");
   html += item("sun", getSunMode() ? "🌙 Revenir au thème sombre" : "☀️ Mode plein soleil");
   html += item("test", state.testMode ? "⚙️ Quitter le mode test" : "⚙️ Mode test (données fictives)");
-  html += item("lock", "🔒 Verrouillage de l'app");
+
   if (currentSession) html += item("logout", "👤 Déconnexion (" + esc(currentUserEmail()) + ")");
   html += '<button id="menu-cancel" style="width:100%;text-align:center;padding:14px 12px;background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:14px;margin-top:4px;">Fermer</button>';
 
@@ -1597,8 +1609,8 @@ sb.auth.onAuthStateChange(function (event, session) {
       function afterUnlock() {
         if (!currentSession) showAuthScreen();
       }
-      if (getPin()) showLockScreen(afterUnlock);
-      else afterUnlock();
+      // Verrouillage par code PIN désactivé
+      afterUnlock();
     }, 400);
   }, SPLASH_DURATION_MS);
 })();
