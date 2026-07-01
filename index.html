@@ -1456,25 +1456,28 @@ function renderForm() {
 function renderDifficultyStars() {
   var box = document.getElementById("f-difficulty-stars");
   if (!box) return;
-  var html = '<button id="diff-minus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:28px;height:28px;font-size:16px;line-height:1;">−</button>';
+  var html = '<button type="button" id="diff-minus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:32px;height:32px;font-size:18px;line-height:1;">−</button>';
   for (var i = 1; i <= 5; i++) {
-    html += '<button class="star-btn" data-value="' + i + '" style="background:transparent;border:none;padding:0;color:' + (i <= (form.difficulty || 0) ? COLORS.amber : COLORS.border) + ';">★</button>';
+    html += '<button type="button" class="star-btn" data-value="' + i + '" style="background:transparent;border:none;padding:0;color:' + (i <= (form.difficulty || 0) ? COLORS.amber : COLORS.border) + ';">★</button>';
   }
-  html += '<button id="diff-plus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:28px;height:28px;font-size:16px;line-height:1;">+</button>';
+  html += '<button type="button" id="diff-plus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:32px;height:32px;font-size:18px;line-height:1;">+</button>';
   box.innerHTML = html;
-  box.querySelectorAll(".star-btn").forEach(function (btn) {
-    btn.onclick = function () {
-      var v = parseInt(btn.getAttribute("data-value"), 10);
+
+  box.onclick = function (e) {
+    var target = e.target.closest ? e.target.closest("button") : null;
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (target.id === "diff-minus") {
+      form.difficulty = Math.max(0, (form.difficulty || 0) - 1);
+    } else if (target.id === "diff-plus") {
+      form.difficulty = Math.min(5, (form.difficulty || 0) + 1);
+    } else if (target.classList.contains("star-btn")) {
+      var v = parseInt(target.getAttribute("data-value"), 10);
       form.difficulty = form.difficulty === v ? 0 : v;
-      renderDifficultyStars();
-    };
-  });
-  document.getElementById("diff-minus").onclick = function () {
-    form.difficulty = Math.max(0, (form.difficulty || 0) - 1);
-    renderDifficultyStars();
-  };
-  document.getElementById("diff-plus").onclick = function () {
-    form.difficulty = Math.min(5, (form.difficulty || 0) + 1);
+    } else {
+      return;
+    }
     renderDifficultyStars();
   };
 }
