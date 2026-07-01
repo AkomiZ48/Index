@@ -119,14 +119,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "" };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -166,7 +166,8 @@ var state = {
   photoCounts: {},
   loading: true,
   loadError: null,
-  pendingDeleteId: null
+  pendingDeleteId: null,
+  filterOrUnsaved: false
 };
 
 var form = null;
@@ -179,7 +180,8 @@ function renderRoot() {
   var totalOvertime = state.entries.reduce(function (s, e) { return s + overtimeMinutes(e.start, e.end); }, 0);
 
   var grouped = {};
-  state.entries.forEach(function (e) {
+  var filteredEntries = state.filterOrUnsaved ? state.entries.filter(function (e) { return !e.orSaved; }) : state.entries;
+  filteredEntries.forEach(function (e) {
     var k = monthKey(e.date);
     (grouped[k] = grouped[k] || []).push(e);
   });
@@ -207,9 +209,13 @@ function renderRoot() {
   } else {
     html += '<div style="display:flex;gap:10px;">' + hourMeterHTML(totalMinutes, "Total cumulé", COLORS.tealLight, 4) + hourMeterHTML(totalOvertime, "Heures sup.", COLORS.amberLight, 3) + '</div>';
 
-    html += '<div style="margin-top:24px;display:flex;flex-direction:column;gap:22px;">';
-    if (state.entries.length === 0) {
-      html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.</div></div>';
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:' + COLORS.inkDim + ';">';
+    html += '<input id="chk-filter-or" type="checkbox" style="width:16px;height:16px;accent-color:' + COLORS.amber + ';"' + (state.filterOrUnsaved ? ' checked' : '') + '/>';
+    html += "N'afficher que les OR non enregistrés sur PC</label>";
+
+    html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:22px;">';
+    if (filteredEntries.length === 0) {
+      html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">' + (state.filterOrUnsaved ? "Aucune intervention avec OR non enregistré." : "Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.") + '</div></div>';
     } else {
       monthKeys.forEach(function (key) {
         var list = grouped[key].slice().sort(function (a, b) {
@@ -262,7 +268,12 @@ function ticketHTML(entry) {
   out += '<div style="width:14px;flex-shrink:0;background-image:radial-gradient(circle,' + COLORS.bg + ' 2.5px,transparent 2.6px);background-size:14px 14px;background-position:center;border-right:1px dashed ' + COLORS.border + ';"></div>';
   out += '<button class="ticket-edit" data-id="' + esc(entry.id) + '" style="flex:1;text-align:left;padding:12px 14px;background:transparent;border:none;">';
   out += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
+  out += '<span style="display:flex;align-items:center;gap:6px;">';
   out += '<span style="font-family:\'Oswald\',sans-serif;font-weight:600;font-size:15px;text-transform:capitalize;">' + esc(fmtDateShort(entry.date)) + '</span>';
+  out += entry.orSaved
+    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR ✓</span>'
+    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR</span>';
+  out += '</span>';
   out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + COLORS.amberLight + ';">' + fmtDuration(dur) + '</span></div>';
   out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
   if (overtime > 0) out += '<div style="font-size:12px;font-weight:600;color:' + COLORS.amberLight + ';margin-top:3px;">+ ' + fmtDuration(overtime) + ' heures sup.</div>';
@@ -292,6 +303,8 @@ function attachRootListeners() {
   if (btnNew) btnNew.onclick = openNewForm;
   var btnRetry = document.getElementById("btn-retry");
   if (btnRetry) btnRetry.onclick = loadEntries;
+  var chkFilter = document.getElementById("chk-filter-or");
+  if (chkFilter) chkFilter.onchange = function () { state.filterOrUnsaved = chkFilter.checked; renderRoot(); };
 
   document.querySelectorAll(".ticket-edit").forEach(function (btn) {
     btn.onclick = function () {
@@ -340,11 +353,11 @@ function confirmDeleteEntry(id) {
 
 // --- Formulaire (modale) ---
 function openNewForm() {
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -385,6 +398,10 @@ function renderForm() {
   html += '<label class="field"><span>Lieu</span><input id="f-lieu" type="text" placeholder="Ex. Chantier rue de la Paix" value="' + esc(form.lieu) + '"/></label>';
   html += '<label class="field"><span>Client</span><input id="f-client" type="text" placeholder="Ex. M. Dupont" value="' + esc(form.client) + '"/></label>';
   html += '<label class="field"><span>Notes</span><textarea id="f-notes" rows="3" placeholder="Détails de l\'intervention…" style="resize:vertical;">' + esc(form.notes) + '</textarea></label>';
+
+  html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
+  html += '<input id="f-or-saved" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.orSaved ? ' checked' : '') + '/>';
+  html += 'OR enregistré sur PC</label>';
 
   html += '<label class="field"><span id="f-photos-label">Photos</span><div id="f-photos-grid"></div><input id="f-photo-input" type="file" accept="image/*" multiple style="display:none;"/></label>';
   html += '</div>';
@@ -437,11 +454,12 @@ function renderPhotoGrid() {
   form.photos.forEach(function (p) {
     html += '<div style="position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;border:1px solid ' + (p.status === "error" ? COLORS.danger : COLORS.border) + ';flex-shrink:0;background:#0A2620;">';
     if (p.dataUrl) {
-      html += '<img src="' + esc(p.dataUrl) + '" style="width:100%;height:100%;object-fit:cover;display:block;"/>';
+      html += '<button class="photo-thumb" data-uid="' + esc(p.uid) + '" style="width:100%;height:100%;padding:0;border:none;background:transparent;display:block;"><img src="' + esc(p.dataUrl) + '" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"/></button>';
     } else {
       html += '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">' + (p.status === "uploading" ? '<span style="font-size:10px;color:' + COLORS.inkDim + ';">…</span>' : '⚠️') + '</div>';
+      html += '<button class="photo-remove" data-uid="' + esc(p.uid) + '" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(10,12,13,0.75);border:none;color:#fff;font-size:11px;">✕</button>';
     }
-    html += '<button class="photo-remove" data-uid="' + esc(p.uid) + '" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(10,12,13,0.75);border:none;color:#fff;font-size:11px;">✕</button></div>';
+    html += '</div>';
   });
   if (okCount < MAX_PHOTOS) {
     html += '<button id="photo-add" style="width:72px;height:72px;border-radius:6px;border:1px dashed ' + COLORS.border + ';background:transparent;color:' + COLORS.inkDim + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">' + (form.photoBusy ? '<span style="font-size:10px;">…</span>' : '<span style="font-size:18px;">📷</span><span style="font-size:10px;">Ajouter</span>') + '</button>';
@@ -456,6 +474,9 @@ function renderPhotoGrid() {
   if (addBtn) addBtn.onclick = function () { document.getElementById("f-photo-input").click(); };
   grid.querySelectorAll(".photo-remove").forEach(function (btn) {
     btn.onclick = function () { removePhoto(btn.getAttribute("data-uid")); };
+  });
+  grid.querySelectorAll(".photo-thumb").forEach(function (btn) {
+    btn.onclick = function () { openPhotoActions(btn.getAttribute("data-uid")); };
   });
 }
 
@@ -495,6 +516,84 @@ function removePhoto(uid) {
   if (p && p.status === "ok") sbDeletePhoto(form.id, uid);
 }
 
+function openPhotoActions(uid) {
+  var p = form.photos.find(function (x) { return x.uid === uid; });
+  if (!p) return;
+
+  var existing = document.getElementById("photo-actions-modal");
+  if (existing) existing.remove();
+
+  var wrap = document.createElement("div");
+  wrap.id = "photo-actions-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:60;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:14px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  function actionBtn(label, color) {
+    return '<button class="pa-btn" style="width:100%;text-align:left;padding:14px 12px;background:transparent;border:none;border-bottom:1px solid ' + COLORS.border + ';color:' + (color || COLORS.ink) + ';font-size:15px;">' + label + '</button>';
+  }
+  panel.innerHTML =
+    actionBtn("👁️ Visionner", COLORS.ink) +
+    actionBtn("⬇️ Enregistrer sur PC", COLORS.ink) +
+    actionBtn("🗑 Supprimer", COLORS.danger) +
+    '<button id="pa-cancel" style="width:100%;text-align:center;padding:14px 12px;background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:14px;margin-top:4px;">Annuler</button>';
+
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  var btns = panel.querySelectorAll(".pa-btn");
+  btns[0].onclick = function () { wrap.remove(); openPhotoViewer(p.dataUrl); };
+  btns[1].onclick = function () { wrap.remove(); downloadPhoto(p); };
+  btns[2].onclick = function () { wrap.remove(); removePhoto(uid); };
+  document.getElementById("pa-cancel").onclick = function () { wrap.remove(); };
+}
+
+function openPhotoViewer(url) {
+  var existing = document.getElementById("photo-viewer");
+  if (existing) existing.remove();
+
+  var wrap = document.createElement("div");
+  wrap.id = "photo-viewer";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:70;";
+  wrap.onclick = function () { wrap.remove(); };
+
+  var img = document.createElement("img");
+  img.src = url;
+  img.style.cssText = "max-width:92%;max-height:80vh;object-fit:contain;border-radius:6px;";
+  img.onclick = function (e) { e.stopPropagation(); };
+
+  var closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕";
+  closeBtn.style.cssText = "position:absolute;top:20px;right:20px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:18px;";
+  closeBtn.onclick = function () { wrap.remove(); };
+
+  wrap.appendChild(img);
+  wrap.appendChild(closeBtn);
+  document.body.appendChild(wrap);
+}
+
+function downloadPhoto(p) {
+  fetch(p.dataUrl)
+    .then(function (res) { return res.blob(); })
+    .then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "intervention-photo-" + p.uid + ".jpg";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    })
+    .catch(function () {
+      // repli : ouvre l'image dans un nouvel onglet si le téléchargement direct échoue
+      window.open(p.dataUrl, "_blank");
+    });
+}
+
 function saveForm() {
   var date = document.getElementById("f-date").value;
   var start = document.getElementById("f-start").value;
@@ -502,6 +601,7 @@ function saveForm() {
   var lieu = document.getElementById("f-lieu").value;
   var client = document.getElementById("f-client").value;
   var notes = document.getElementById("f-notes").value;
+  var orSaved = document.getElementById("f-or-saved").checked;
 
   if (!date || !start || !end) {
     form.error = "Renseigne au moins la date, l'heure de début et de fin.";
@@ -511,7 +611,7 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
 
   sbUpsertEntry(entry).then(function () {
