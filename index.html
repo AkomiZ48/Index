@@ -496,7 +496,13 @@ function ticketHTML(entry) {
     if (photoCount > 0) out += '<span>📷 ' + photoCount + '</span>';
     out += '</div>';
   }
-  if (entry.difficulty > 0) out += '<div style="margin-top:4px;font-size:12px;color:' + COLORS.amber + ';">' + "★".repeat(entry.difficulty) + '<span style="color:' + COLORS.border + ';">' + "★".repeat(5 - entry.difficulty) + '</span></div>';
+  if (entry.difficulty > 0) {
+    out += '<div style="margin-top:4px;font-size:13px;">';
+    for (var hi = 1; hi <= 5; hi++) {
+      out += '<span style="opacity:' + (hi <= entry.difficulty ? '1' : '0.25') + ';">🔨</span>';
+    }
+    out += '</div>';
+  }
   if (entry.notes) out += '<div style="margin-top:6px;font-size:12.5px;color:' + COLORS.inkDim + ';font-style:italic;">📝 ' + esc(entry.notes) + '</div>';
   out += '</button>';
 
@@ -1458,7 +1464,7 @@ function renderDifficultyStars() {
   if (!box) return;
   var html = '<button type="button" id="diff-minus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:32px;height:32px;font-size:18px;line-height:1;">−</button>';
   for (var i = 1; i <= 5; i++) {
-    html += '<button type="button" class="star-btn" data-value="' + i + '" style="background:transparent;border:none;padding:0;color:' + (i <= (form.difficulty || 0) ? COLORS.amber : COLORS.border) + ';">★</button>';
+    html += '<button type="button" class="star-btn" data-value="' + i + '" style="background:transparent;border:none;padding:0;opacity:' + (i <= (form.difficulty || 0) ? '1' : '0.3') + ';font-size:22px;">🔨</button>';
   }
   html += '<button type="button" id="diff-plus" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;width:32px;height:32px;font-size:18px;line-height:1;">+</button>';
   box.innerHTML = html;
