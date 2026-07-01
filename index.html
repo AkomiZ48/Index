@@ -179,7 +179,8 @@ var state = {
   loading: true,
   loadError: null,
   pendingDeleteId: null,
-  filterOrUnsaved: false
+  filterOrUnsaved: false,
+  filterFacturableOnly: false
 };
 
 var form = null;
@@ -192,7 +193,12 @@ function renderRoot() {
   var totalOvertime = state.entries.reduce(function (s, e) { return s + overtimeMinutes(e.start, e.end); }, 0);
 
   var grouped = {};
-  var filteredEntries = state.filterOrUnsaved ? state.entries.filter(function (e) { return !e.orSaved; }) : state.entries;
+  var facturableCount = state.entries.filter(function (e) { return e.facturable; }).length;
+  var filteredEntries = state.entries.filter(function (e) {
+    if (state.filterOrUnsaved && e.orSaved) return false;
+    if (state.filterFacturableOnly && !e.facturable) return false;
+    return true;
+  });
   filteredEntries.forEach(function (e) {
     var k = monthKey(e.date);
     (grouped[k] = grouped[k] || []).push(e);
@@ -220,13 +226,21 @@ function renderRoot() {
   } else {
     html += '<div style="display:flex;gap:10px;">' + hourMeterHTML(totalMinutes, "Total cumulé", COLORS.tealLight, 4) + hourMeterHTML(totalOvertime, "Heures sup.", COLORS.amberLight, 3) + '</div>';
 
-    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:' + COLORS.inkDim + ';">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:8px 10px;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;font-size:12.5px;">';
+    html += '<span style="color:' + COLORS.inkDim + ';">Interventions facturables</span>';
+    html += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;color:' + COLORS.teal + ';">' + facturableCount + ' / ' + state.entries.length + '</span></div>';
+
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:' + COLORS.inkDim + ';">';
     html += '<input id="chk-filter-or" type="checkbox" style="width:16px;height:16px;accent-color:' + COLORS.amber + ';"' + (state.filterOrUnsaved ? ' checked' : '') + '/>';
     html += "N'afficher que les OR non enregistrés sur PC</label>";
 
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:' + COLORS.inkDim + ';">';
+    html += '<input id="chk-filter-facturable" type="checkbox" style="width:16px;height:16px;accent-color:' + COLORS.teal + ';"' + (state.filterFacturableOnly ? ' checked' : '') + '/>';
+    html += "N'afficher que les facturables</label>";
+
     html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:22px;">';
     if (filteredEntries.length === 0) {
-      html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">' + (state.filterOrUnsaved ? "Aucune intervention avec OR non enregistré." : "Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.") + '</div></div>';
+      html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">' + (state.entries.length > 0 ? "Aucune intervention ne correspond à ce filtre." : "Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.") + '</div></div>';
     } else {
       monthKeys.forEach(function (key) {
         var list = grouped[key].slice().sort(function (a, b) {
@@ -284,7 +298,9 @@ function ticketHTML(entry) {
   out += entry.orSaved
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR ✓</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR</span>';
-  if (!entry.facturable) out += '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.inkDim + ';border:1px solid ' + COLORS.inkDim + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
+  out += entry.facturable
+    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">FACTURABLE</span>'
+    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.danger + ';border:1px solid ' + COLORS.danger + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
   out += '</span>';
   out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + COLORS.amberLight + ';">' + fmtDuration(dur) + '</span></div>';
   out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
@@ -317,6 +333,8 @@ function attachRootListeners() {
   if (btnRetry) btnRetry.onclick = loadEntries;
   var chkFilter = document.getElementById("chk-filter-or");
   if (chkFilter) chkFilter.onchange = function () { state.filterOrUnsaved = chkFilter.checked; renderRoot(); };
+  var chkFilterFact = document.getElementById("chk-filter-facturable");
+  if (chkFilterFact) chkFilterFact.onchange = function () { state.filterFacturableOnly = chkFilterFact.checked; renderRoot(); };
 
   document.querySelectorAll(".ticket-edit").forEach(function (btn) {
     btn.onclick = function () {
