@@ -22,7 +22,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #0F3A30; font-family: 'Inter', sans-serif; color: #F2EFE6; }
   input[type="date"], input[type="time"] { color-scheme: dark; }
-  input, textarea { width: 100%; box-sizing: border-box; background: #0F1213; border: 1px solid #2A6153; border-radius: 7px; padding: 10px 12px; color: #F2EFE6; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
+  input, textarea, select { width: 100%; box-sizing: border-box; background: #0F1213; border: 1px solid #2A6153; border-radius: 7px; padding: 10px 12px; color: #F2EFE6; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
   label.field { display: flex; flex-direction: column; gap: 5px; }
   label.field span { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #9FBAAF; }
   button { font-family: 'Inter', sans-serif; cursor: pointer; }
@@ -76,6 +76,23 @@ var COLORS = {
   bg: "#0F3A30", surface: "#154A3D", surfaceRaised: "#1B5747", ink: "#F2EFE6", inkDim: "#9FBAAF",
   amber: "#C4272C", teal: "#4FB68E", border: "#2A6153", danger: "#E2574F", amberLight: "#F0827D", tealLight: "#7FE0B4"
 };
+
+var CATEGORIES = [
+  { id: "maintenance", label: "Maintenance", color: "#4FB68E" },
+  { id: "depannage", label: "Dépannage", color: "#E2574F" },
+  { id: "installation", label: "Installation", color: "#F0827D" },
+  { id: "livraison", label: "Livraison", color: "#C9A0F5" },
+  { id: "autre", label: "Autre", color: "#9FBAAF" }
+];
+function categoryInfo(id) {
+  for (var i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i].id === id) return CATEGORIES[i];
+  return null;
+}
+
+// --- Code PIN de verrouillage ---
+var PIN_KEY = "carnet:pin";
+function getPin() { try { return localStorage.getItem(PIN_KEY) || ""; } catch (e) { return ""; } }
+function setPin(pin) { try { if (pin) localStorage.setItem(PIN_KEY, pin); else localStorage.removeItem(PIN_KEY); } catch (e) {} }
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -144,14 +161,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false, category: row.category || "" };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false, category: entry.category || null
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -248,7 +265,8 @@ var state = {
   pendingCount: getQueue().length,
   testMode: false,
   realEntriesBackup: null,
-  realPhotoCountsBackup: null
+  realPhotoCountsBackup: null,
+  lastDeleted: null
 };
 
 var form = null;
@@ -285,6 +303,7 @@ function renderRoot() {
   html += '<div style="flex-shrink:0;display:flex;align-items:center;gap:8px;">';
   html += '<button id="btn-stats" aria-label="Statistiques" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:18px;display:flex;align-items:center;justify-content:center;">📊</button>';
   html += '<button id="btn-test" aria-label="Mode test" style="width:42px;height:42px;flex-shrink:0;background:' + (state.testMode ? COLORS.amber : COLORS.surface) + ';border:1px solid ' + (state.testMode ? COLORS.amber : COLORS.border) + ';border-radius:8px;color:' + (state.testMode ? '#F2EFE6' : COLORS.ink) + ';font-size:18px;display:flex;align-items:center;justify-content:center;">⚙️</button>';
+  html += '<button id="btn-lock" aria-label="Verrouillage" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:18px;display:flex;align-items:center;justify-content:center;">' + (getPin() ? '🔒' : '🔓') + '</button>';
   html += '<div style="display:flex;align-items:center;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:6px 10px;">';
   html += '<img src="' + LOGO_DATA_URI + '" alt="DMP" style="height:30px;width:auto;display:block;"/></div>';
   html += '</div>';
@@ -303,6 +322,12 @@ function renderRoot() {
     html += '<div style="display:flex;align-items:center;gap:8px;background:rgba(240,130,125,0.14);border:1px solid ' + COLORS.amberLight + ';color:' + COLORS.amberLight + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">📡 Hors ligne — ' + (state.pendingCount > 0 ? state.pendingCount + " modification(s) en attente de synchronisation" : "données en cache") + '</div>';
   } else if (state.pendingCount > 0) {
     html += '<div style="display:flex;align-items:center;gap:8px;background:rgba(79,182,142,0.14);border:1px solid ' + COLORS.teal + ';color:' + COLORS.teal + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">🔄 Synchronisation de ' + state.pendingCount + ' modification(s)…</div>';
+  }
+
+  if (shouldShowReminder()) {
+    html += '<div id="reminder-banner-wrap" style="display:flex;align-items:center;gap:8px;background:rgba(240,130,125,0.14);border:1px solid ' + COLORS.amberLight + ';color:' + COLORS.amberLight + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">';
+    html += '<span style="flex:1;">🔔 Tu n\'as encore rien noté aujourd\'hui. Pense à ajouter ton intervention !</span>';
+    html += '<button id="btn-reminder-close" style="background:transparent;border:none;color:' + COLORS.amberLight + ';font-size:14px;">✕</button></div>';
   }
 
   if (state.loading) {
@@ -388,12 +413,15 @@ function ticketHTML(entry) {
   var photoCount = state.photoCounts[entry.id] || 0;
   var pendingDelete = state.pendingDeleteId === entry.id;
 
+  var cat = categoryInfo(entry.category);
+
   var out = '<div style="position:relative;display:flex;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;overflow:hidden;">';
   out += '<div style="width:14px;flex-shrink:0;background-image:radial-gradient(circle,' + COLORS.bg + ' 2.5px,transparent 2.6px);background-size:14px 14px;background-position:center;border-right:1px dashed ' + COLORS.border + ';"></div>';
   out += '<button class="ticket-edit" data-id="' + esc(entry.id) + '" style="flex:1;text-align:left;padding:12px 14px;background:transparent;border:none;">';
   out += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
-  out += '<span style="display:flex;align-items:center;gap:6px;">';
+  out += '<span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
   out += '<span style="font-family:\'Oswald\',sans-serif;font-weight:600;font-size:15px;text-transform:capitalize;color:' + COLORS.ink + ' !important;">' + esc(fmtDateShort(entry.date)) + '</span>';
+  if (cat) out += '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + cat.color + ';border:1px solid ' + cat.color + ';border-radius:4px;padding:1px 5px;">' + esc(cat.label.toUpperCase()) + '</span>';
   out += entry.orSaved
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + ' ✓</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + '</span>';
@@ -419,6 +447,7 @@ function ticketHTML(entry) {
     out += '<button class="ticket-confirm-delete" data-id="' + esc(entry.id) + '" style="background:' + COLORS.danger + ';color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:5px 8px;">Supprimer</button>';
     out += '<button class="ticket-cancel-delete" style="background:transparent;color:' + COLORS.inkDim + ';border:1px solid ' + COLORS.border + ';border-radius:5px;font-size:11px;padding:5px 8px;">Annuler</button></div>';
   } else {
+    out += '<button class="ticket-share" data-id="' + esc(entry.id) + '" style="display:flex;align-items:center;justify-content:center;padding:0 10px;background:transparent;border:none;border-left:1px solid ' + COLORS.border + ';color:' + COLORS.inkDim + ';font-size:15px;">📤</button>';
     out += '<button class="ticket-delete" data-id="' + esc(entry.id) + '" style="display:flex;align-items:center;justify-content:center;padding:0 12px;background:transparent;border:none;border-left:1px solid ' + COLORS.border + ';color:' + COLORS.inkDim + ';font-size:15px;">🗑</button>';
   }
   out += '</div>';
@@ -634,6 +663,121 @@ function toggleTestMode() {
   }
 }
 
+// --- Partage rapide ---
+function shareEntry(entry) {
+  var dur = fmtDuration(durationMinutes(entry.start, entry.end));
+  var lines = [
+    "Intervention DMP LOC — " + fmtDateShort(entry.date),
+    entry.start + " → " + entry.end + " (" + dur + ")",
+    entry.lieu ? "Lieu : " + entry.lieu : null,
+    entry.client ? "Client : " + entry.client : null,
+    entry.orNumber ? "N° OR : " + entry.orNumber : null,
+    entry.notes ? "Notes : " + entry.notes : null
+  ].filter(Boolean);
+  var text = lines.join("\n");
+
+  if (navigator.share) {
+    navigator.share({ title: "Intervention DMP LOC", text: text }).catch(function () {});
+  } else {
+    window.location.href = "mailto:?subject=" + encodeURIComponent("Intervention DMP LOC - " + fmtDateShort(entry.date)) + "&body=" + encodeURIComponent(text);
+  }
+}
+
+// --- Verrouillage par code PIN ---
+function openLockSettings() {
+  var existing = document.getElementById("lock-settings-modal");
+  if (existing) existing.remove();
+  var hasPin = !!getPin();
+
+  var wrap = document.createElement("div");
+  wrap.id = "lock-settings-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:60;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:18px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '<h2 style="font-family:\'Oswald\',sans-serif;font-size:16px;text-transform:uppercase;margin:0 0 14px;">🔒 Verrouillage de l\'app</h2>';
+  html += '<div id="lock-error" style="color:' + COLORS.danger + ';font-size:12.5px;margin-bottom:8px;"></div>';
+  if (hasPin) {
+    html += '<p style="font-size:13px;color:' + COLORS.inkDim + ';">Un code est déjà actif.</p>';
+    html += '<label class="field" style="margin-bottom:10px;"><span>Code actuel</span><input id="lock-current" type="tel" inputmode="numeric" maxlength="6" placeholder="••••"/></label>';
+    html += '<label class="field" style="margin-bottom:14px;"><span>Nouveau code (laisser vide pour supprimer)</span><input id="lock-new" type="tel" inputmode="numeric" maxlength="6" placeholder="••••"/></label>';
+    html += '<button id="lock-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;width:100%;font-weight:700;">Valider</button>';
+  } else {
+    html += '<p style="font-size:13px;color:' + COLORS.inkDim + ';">Définis un code à 4-6 chiffres pour protéger l\'accès à l\'app.</p>';
+    html += '<label class="field" style="margin-bottom:14px;"><span>Nouveau code</span><input id="lock-new" type="tel" inputmode="numeric" maxlength="6" placeholder="••••"/></label>';
+    html += '<button id="lock-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;width:100%;font-weight:700;">Activer le verrouillage</button>';
+  }
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  document.getElementById("lock-save").onclick = function () {
+    var errBox = document.getElementById("lock-error");
+    var newVal = document.getElementById("lock-new").value.trim();
+    if (hasPin) {
+      var current = document.getElementById("lock-current").value.trim();
+      if (current !== getPin()) { errBox.textContent = "Code actuel incorrect."; return; }
+      if (newVal && (newVal.length < 4 || newVal.length > 6)) { errBox.textContent = "Le nouveau code doit faire 4 à 6 chiffres."; return; }
+      setPin(newVal);
+    } else {
+      if (newVal.length < 4 || newVal.length > 6) { errBox.textContent = "Le code doit faire 4 à 6 chiffres."; return; }
+      setPin(newVal);
+    }
+    wrap.remove();
+    renderRoot();
+  };
+}
+
+function showLockScreen(onUnlock) {
+  var wrap = document.createElement("div");
+  wrap.id = "lock-screen";
+  wrap.style.cssText = "position:fixed;inset:0;background:" + COLORS.bg + ";display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10000;padding:24px;text-align:center;";
+  wrap.innerHTML =
+    '<div style="font-size:34px;margin-bottom:10px;">🔒</div>' +
+    '<div style="font-family:\'Oswald\',sans-serif;font-size:16px;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;">Carnet verrouillé</div>' +
+    '<input id="lock-input" type="tel" inputmode="numeric" maxlength="6" placeholder="Code" style="max-width:200px;text-align:center;font-size:20px;letter-spacing:0.3em;"/>' +
+    '<div id="lock-screen-error" style="color:' + COLORS.danger + ';font-size:12.5px;margin-top:10px;height:16px;"></div>';
+  document.body.appendChild(wrap);
+
+  var input = document.getElementById("lock-input");
+  input.focus();
+  function tryUnlock() {
+    if (input.value === getPin()) {
+      wrap.remove();
+      onUnlock();
+    } else {
+      document.getElementById("lock-screen-error").textContent = "Code incorrect";
+      input.value = "";
+    }
+  }
+  input.addEventListener("keyup", function (e) {
+    if (e.key === "Enter") tryUnlock();
+    else if (input.value.length >= getPin().length) tryUnlock();
+  });
+}
+
+// --- Rappel du soir ---
+function dismissReminder() {
+  try { localStorage.setItem("carnet:reminderDismissed", todayISO()); } catch (e) {}
+  var el = document.getElementById("reminder-banner-wrap");
+  if (el) el.remove();
+}
+function shouldShowReminder() {
+  var now = new Date();
+  if (now.getHours() < 18) return false;
+  if (state.testMode || state.loading) return false;
+  var todayHasEntry = state.entries.some(function (e) { return e.date === todayISO(); });
+  if (todayHasEntry) return false;
+  try {
+    if (localStorage.getItem("carnet:reminderDismissed") === todayISO()) return false;
+  } catch (e) {}
+  return true;
+}
+
 function attachRootListeners() {
   var btnNew = document.getElementById("btn-new");
   if (btnNew) btnNew.onclick = openNewForm;
@@ -643,6 +787,10 @@ function attachRootListeners() {
   if (btnStats) btnStats.onclick = openStatsModal;
   var btnTest = document.getElementById("btn-test");
   if (btnTest) btnTest.onclick = toggleTestMode;
+  var btnLock = document.getElementById("btn-lock");
+  if (btnLock) btnLock.onclick = openLockSettings;
+  var btnReminderClose = document.getElementById("btn-reminder-close");
+  if (btnReminderClose) btnReminderClose.onclick = dismissReminder;
   var chkFilter = document.getElementById("chk-filter-or");
   if (chkFilter) chkFilter.onchange = function () { state.filterOrUnsaved = chkFilter.checked; renderRoot(); };
   var chkFilterFact = document.getElementById("chk-filter-facturable");
@@ -671,6 +819,13 @@ function attachRootListeners() {
       var id = btn.getAttribute("data-id");
       var entry = state.entries.find(function (e) { return e.id === id; });
       if (entry) openEditForm(entry);
+    };
+  });
+  document.querySelectorAll(".ticket-share").forEach(function (btn) {
+    btn.onclick = function () {
+      var id = btn.getAttribute("data-id");
+      var entry = state.entries.find(function (e) { return e.id === id; });
+      if (entry) shareEntry(entry);
     };
   });
   document.querySelectorAll(".ticket-delete").forEach(function (btn) {
@@ -735,6 +890,7 @@ function trySyncPending() {
 window.addEventListener("online", trySyncPending);
 
 function confirmDeleteEntry(id) {
+  var deletedEntry = state.entries.find(function (e) { return e.id === id; });
   if (state.testMode) {
     state.entries = state.entries.filter(function (e) { return e.id !== id; });
     state.pendingDeleteId = null;
@@ -748,11 +904,13 @@ function confirmDeleteEntry(id) {
     state.pendingCount = getQueue().length;
     state.pendingDeleteId = null;
     renderRoot();
+    if (deletedEntry) showUndoToast(deletedEntry);
     return;
   }
   sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
     state.pendingDeleteId = null;
     loadEntries();
+    if (deletedEntry) showUndoToast(deletedEntry);
   }).catch(function () {
     // échec réseau probable : on met en file d'attente plutôt que de bloquer
     state.entries = state.entries.filter(function (e) { return e.id !== id; });
@@ -764,15 +922,41 @@ function confirmDeleteEntry(id) {
   });
 }
 
+// --- Annuler la dernière suppression ---
+function showUndoToast(entry) {
+  var existing = document.getElementById("undo-toast");
+  if (existing) existing.remove();
+  clearTimeout(window.__undoTimer);
+
+  var toast = document.createElement("div");
+  toast.id = "undo-toast";
+  toast.style.cssText = "position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border:1px solid " + COLORS.border + ";border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 18px rgba(0,0,0,0.4);z-index:65;font-size:13px;";
+  toast.innerHTML = '<span style="flex:1;">Intervention supprimée</span><button id="undo-btn" style="background:' + COLORS.amber + ';color:#F2EFE6;border:none;border-radius:6px;padding:7px 12px;font-size:13px;font-weight:600;">Annuler</button>';
+  document.body.appendChild(toast);
+
+  document.getElementById("undo-btn").onclick = function () {
+    clearTimeout(window.__undoTimer);
+    toast.remove();
+    sbUpsertEntry(entry).then(function () { loadEntries(); }).catch(function () {
+      alert("Impossible de restaurer l'intervention (problème réseau).");
+    });
+  };
+
+  window.__undoTimer = setTimeout(function () {
+    var t = document.getElementById("undo-toast");
+    if (t) t.remove();
+  }, 7000);
+}
+
 // --- Formulaire (modale) ---
 function openNewForm() {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour ajouter une vraie intervention."); return; }
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", category: "", orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour modifier tes vraies interventions."); return; }
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, category: entry.category || "", orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -784,6 +968,15 @@ function closeForm() {
   var modal = document.getElementById("form-modal");
   if (modal) modal.remove();
   form = null;
+}
+function duplicateFromForm() {
+  var lieu = document.getElementById("f-lieu").value;
+  var client = document.getElementById("f-client").value;
+  var category = document.getElementById("f-category").value;
+  var facturable = document.getElementById("f-facturable").checked;
+  closeForm();
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: lieu, client: client, notes: "", category: category, orSaved: false, orNumber: "", facturable: facturable, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  renderForm();
 }
 
 function renderForm() {
@@ -812,6 +1005,13 @@ function renderForm() {
   html += '<label class="field" style="flex:1;"><span>Fin</span><input id="f-end" type="time" value="' + esc(form.end) + '"/></label></div>';
   html += '<label class="field"><span>Lieu</span><input id="f-lieu" type="text" placeholder="Ex. Chantier rue de la Paix" value="' + esc(form.lieu) + '"/></label>';
   html += '<label class="field"><span>Client</span><input id="f-client" type="text" placeholder="Ex. M. Dupont" value="' + esc(form.client) + '"/></label>';
+
+  html += '<label class="field"><span>Catégorie</span><select id="f-category">';
+  html += '<option value="">— Aucune —</option>';
+  CATEGORIES.forEach(function (c) {
+    html += '<option value="' + esc(c.id) + '"' + (form.category === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+  });
+  html += '</select></label>';
   html += '<label class="field"><span>Notes</span><textarea id="f-notes" rows="3" placeholder="Détails de l\'intervention…" style="resize:vertical;">' + esc(form.notes) + '</textarea></label>';
 
   html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
@@ -829,6 +1029,7 @@ function renderForm() {
 
   html += '<div style="display:flex;gap:10px;margin-top:20px;">';
   if (form.isEditingExisting) html += '<button id="f-delete" class="btn" style="background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';flex:0 0 auto;">🗑</button>';
+  if (form.isEditingExisting) html += '<button id="f-duplicate" class="btn" style="background:transparent;border:1px solid ' + COLORS.teal + ';color:' + COLORS.teal + ';flex:0 0 auto;">📄 Dupliquer</button>';
   html += '<button id="f-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;flex:1;font-weight:700;">' + (form.isEditingExisting ? "Enregistrer" : "Ajouter") + '</button>';
   html += '</div>';
 
@@ -840,6 +1041,8 @@ function renderForm() {
   document.getElementById("f-save").onclick = saveForm;
   var delBtn = document.getElementById("f-delete");
   if (delBtn) delBtn.onclick = deleteFromForm;
+  var dupBtn = document.getElementById("f-duplicate");
+  if (dupBtn) dupBtn.onclick = duplicateFromForm;
   document.getElementById("f-photo-input").onchange = function (e) {
     if (e.target.files && e.target.files.length) handleFiles(e.target.files);
     e.target.value = "";
@@ -1021,6 +1224,7 @@ function saveForm() {
   var end = document.getElementById("f-end").value;
   var lieu = document.getElementById("f-lieu").value;
   var client = document.getElementById("f-client").value;
+  var category = document.getElementById("f-category").value;
   var notes = document.getElementById("f-notes").value;
   var orSaved = document.getElementById("f-or-saved").checked;
   var orNumber = document.getElementById("f-or-number").value;
@@ -1034,7 +1238,7 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, category: category, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
 
   function saveOffline() {
@@ -1066,6 +1270,7 @@ function saveForm() {
 
 function deleteFromForm() {
   var id = form.id;
+  var deletedEntry = state.entries.find(function (e) { return e.id === id; }) || Object.assign({}, form);
   if (!navigator.onLine) {
     state.entries = state.entries.filter(function (e) { return e.id !== id; });
     saveCache(state.entries);
@@ -1078,6 +1283,7 @@ function deleteFromForm() {
   sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
     closeForm();
     loadEntries();
+    if (deletedEntry) showUndoToast(deletedEntry);
   }).catch(function () {
     state.entries = state.entries.filter(function (e) { return e.id !== id; });
     saveCache(state.entries);
@@ -1099,7 +1305,10 @@ if (getQueue().length > 0 && navigator.onLine) trySyncPending();
     var splash = document.getElementById("splash");
     if (!splash) return;
     splash.style.opacity = "0";
-    setTimeout(function () { splash.remove(); }, 400);
+    setTimeout(function () {
+      splash.remove();
+      if (getPin()) showLockScreen(function () {});
+    }, 400);
   }, SPLASH_DURATION_MS);
 })();
 </script>
