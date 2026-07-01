@@ -26,12 +26,19 @@
   label.field span { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #9FBAAF; }
   button { font-family: 'Inter', sans-serif; cursor: pointer; }
   .btn { border: none; border-radius: 8px; padding: 12px 16px; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  #print-area { display: none; }
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area { display: block !important; position: absolute; top: 0; left: 0; width: 100%; }
+  }
 </style>
 </head>
 <body>
 <div id="root">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#9FBAAF;font-size:14px;padding:20px;text-align:center;">Chargement de l'app…</div>
 </div>
+<div id="print-area"></div>
 <div id="splash" style="position:fixed;inset:0;background:#0F3A30;display:flex;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s ease;">
   <img src="splash.png" alt="" style="width:560px;max-width:92vw;height:auto;" />
 </div>
@@ -134,14 +141,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, facturable: row.facturable !== false };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, facturable: entry.facturable !== false
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -175,6 +182,55 @@ function sbDeleteAllPhotos(entryId) {
   });
 }
 
+// --- Cache local & file d'attente hors-ligne ---
+var CACHE_KEY = "carnet:cache:entries";
+var QUEUE_KEY = "carnet:pendingSync";
+
+function saveCache(entries) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(entries)); } catch (e) {}
+}
+function loadCache() {
+  try {
+    var raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+function getQueue() {
+  try {
+    var raw = localStorage.getItem(QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+function setQueue(q) {
+  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch (e) {}
+}
+function queueAdd(item) {
+  var q = getQueue();
+  // si une fiche identique est déjà en attente, on la remplace par la version la plus récente
+  q = q.filter(function (it) { return !(it.type === item.type && it.id === item.id); });
+  q.push(item);
+  setQueue(q);
+}
+function flushQueue() {
+  var q = getQueue();
+  if (!q.length || !navigator.onLine) return Promise.resolve();
+  var remaining = [];
+  var chain = Promise.resolve();
+  q.forEach(function (item) {
+    chain = chain.then(function () {
+      var op;
+      if (item.type === "upsert") op = sbUpsertEntry(item.payload);
+      else if (item.type === "delete") op = sbDeleteEntry(item.id).then(function () { return sbDeleteAllPhotos(item.id); });
+      else op = Promise.resolve();
+      return op.catch(function () { remaining.push(item); });
+    });
+  });
+  return chain.then(function () {
+    setQueue(remaining);
+    return remaining.length;
+  });
+}
+
 // --- État de l'application ---
 var state = {
   entries: [],
@@ -183,7 +239,13 @@ var state = {
   loadError: null,
   pendingDeleteId: null,
   filterOrUnsaved: false,
-  filterFacturableOnly: false
+  filterFacturableOnly: false,
+  searchQuery: "",
+  offlineMode: false,
+  pendingCount: getQueue().length,
+  testMode: false,
+  realEntriesBackup: null,
+  realPhotoCountsBackup: null
 };
 
 var form = null;
@@ -197,9 +259,11 @@ function renderRoot() {
 
   var grouped = {};
   var facturableCount = state.entries.filter(function (e) { return e.facturable; }).length;
+  var q = state.searchQuery.trim().toLowerCase();
   var filteredEntries = state.entries.filter(function (e) {
     if (state.filterOrUnsaved && e.orSaved) return false;
     if (state.filterFacturableOnly && !e.facturable) return false;
+    if (q && (e.lieu || "").toLowerCase().indexOf(q) === -1 && (e.client || "").toLowerCase().indexOf(q) === -1) return false;
     return true;
   });
   filteredEntries.forEach(function (e) {
@@ -215,13 +279,27 @@ function renderRoot() {
   html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:12px;">';
   html += '<div><div style="font-family:\'Oswald\',sans-serif;font-size:12px;letter-spacing:0.22em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:4px;">Carnet de bord</div>';
   html += '<h1 style="font-family:\'Oswald\',sans-serif;font-size:26px;font-weight:700;margin:0;">Mes interventions</h1></div>';
-  html += '<div style="flex-shrink:0;display:flex;align-items:center;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:6px 10px;">';
+  html += '<div style="flex-shrink:0;display:flex;align-items:center;gap:8px;">';
+  html += '<button id="btn-stats" aria-label="Statistiques" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:18px;display:flex;align-items:center;justify-content:center;">📊</button>';
+  html += '<button id="btn-test" aria-label="Mode test" style="width:42px;height:42px;flex-shrink:0;background:' + (state.testMode ? COLORS.amber : COLORS.surface) + ';border:1px solid ' + (state.testMode ? COLORS.amber : COLORS.border) + ';border-radius:8px;color:' + (state.testMode ? '#F2EFE6' : COLORS.ink) + ';font-size:18px;display:flex;align-items:center;justify-content:center;">⚙️</button>';
+  html += '<div style="display:flex;align-items:center;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:6px 10px;">';
   html += '<img src="' + LOGO_DATA_URI + '" alt="DMP" style="height:30px;width:auto;display:block;"/></div>';
   html += '</div>';
+  html += '</div>';
+
+  if (state.testMode) {
+    html += '<div style="display:flex;align-items:center;gap:8px;background:rgba(196,39,44,0.16);border:1px solid ' + COLORS.amber + ';color:' + COLORS.amberLight + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">⚙️ MODE TEST — données fictives, non sauvegardées. Retape sur l\'engrenage pour revenir à tes vraies interventions.</div>';
+  }
 
   if (state.loadError) {
     html += '<div style="display:flex;align-items:flex-start;gap:8px;background:rgba(193,85,74,0.14);border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:14px;line-height:1.4;">';
     html += '⚠️<div style="flex:1;">Connexion à la base impossible : ' + esc(state.loadError) + '<button id="btn-retry" style="display:block;margin-top:6px;background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';border-radius:5px;padding:4px 8px;font-size:11.5px;">Réessayer</button></div></div>';
+  }
+
+  if (state.offlineMode) {
+    html += '<div style="display:flex;align-items:center;gap:8px;background:rgba(240,130,125,0.14);border:1px solid ' + COLORS.amberLight + ';color:' + COLORS.amberLight + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">📡 Hors ligne — ' + (state.pendingCount > 0 ? state.pendingCount + " modification(s) en attente de synchronisation" : "données en cache") + '</div>';
+  } else if (state.pendingCount > 0) {
+    html += '<div style="display:flex;align-items:center;gap:8px;background:rgba(79,182,142,0.14);border:1px solid ' + COLORS.teal + ';color:' + COLORS.teal + ';border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;">🔄 Synchronisation de ' + state.pendingCount + ' modification(s)…</div>';
   }
 
   if (state.loading) {
@@ -239,6 +317,8 @@ function renderRoot() {
     html += '<input id="chk-filter-facturable" type="checkbox" style="width:16px;height:16px;accent-color:' + COLORS.teal + ';"' + (state.filterFacturableOnly ? ' checked' : '') + '/>';
     html += "N'afficher que les facturables</label>";
 
+    html += '<input id="search-input" type="text" placeholder="🔍 Rechercher un lieu ou un client…" value="' + esc(state.searchQuery) + '" style="margin-top:12px;"/>';
+
     html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:22px;">';
     if (filteredEntries.length === 0) {
       html += '<div style="text-align:center;padding:40px 16px;color:' + COLORS.inkDim + ';border:1px dashed ' + COLORS.border + ';border-radius:10px;"><div style="font-size:28px;margin-bottom:10px;">⏰</div><div style="font-size:14px;">' + (state.entries.length > 0 ? "Aucune intervention ne correspond à ce filtre." : "Aucune intervention enregistrée.<br/>Ajoute la première avec le bouton +.") + '</div></div>';
@@ -251,7 +331,8 @@ function renderRoot() {
         var subtotal = list.reduce(function (s, e) { return s + durationMinutes(e.start, e.end); }, 0);
         html += '<div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ' + COLORS.border + ';">';
         html += '<span style="font-family:\'Oswald\',sans-serif;font-size:13px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;">' + esc(monthLabel(key)) + '</span>';
-        html += '<span style="font-family:\'Space Mono\',monospace;font-size:13px;color:' + COLORS.inkDim + ';">' + fmtDuration(subtotal) + '</span></div>';
+        html += '<span style="display:flex;align-items:center;gap:8px;"><span style="font-family:\'Space Mono\',monospace;font-size:13px;color:' + COLORS.inkDim + ';">' + fmtDuration(subtotal) + '</span>';
+        html += '<button class="btn-export-month" data-month="' + esc(key) + '" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.inkDim + ';border-radius:5px;padding:2px 6px;font-size:11px;">Exporter ⬇️</button></span></div>';
         html += '<div style="display:flex;flex-direction:column;gap:8px;">';
         list.forEach(function (entry) { html += ticketHTML(entry); });
         html += '</div></div>';
@@ -311,8 +392,8 @@ function ticketHTML(entry) {
   out += '<span style="display:flex;align-items:center;gap:6px;">';
   out += '<span style="font-family:\'Oswald\',sans-serif;font-weight:600;font-size:15px;text-transform:capitalize;">' + esc(fmtDateShort(entry.date)) + '</span>';
   out += entry.orSaved
-    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR ✓</span>'
-    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR</span>';
+    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + ' ✓</span>'
+    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + '</span>';
   out += entry.facturable
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">FACTURABLE</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.danger + ';border:1px solid ' + COLORS.danger + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
@@ -341,15 +422,246 @@ function ticketHTML(entry) {
   return out;
 }
 
+// --- Tableau de bord statistiques ---
+function openStatsModal() {
+  var existing = document.getElementById("stats-modal");
+  if (existing) existing.remove();
+
+  var byMonth = {};
+  state.entries.forEach(function (e) {
+    var k = monthKey(e.date);
+    if (!byMonth[k]) byMonth[k] = { minutes: 0, overtime: 0, count: 0, facturable: 0 };
+    byMonth[k].minutes += durationMinutes(e.start, e.end);
+    byMonth[k].overtime += overtimeMinutes(e.start, e.end);
+    byMonth[k].count += 1;
+    if (e.facturable) byMonth[k].facturable += 1;
+  });
+  var monthKeys = Object.keys(byMonth).sort().reverse();
+
+  var totalMinutes = state.entries.reduce(function (s, e) { return s + durationMinutes(e.start, e.end); }, 0);
+  var totalOvertime = state.entries.reduce(function (s, e) { return s + overtimeMinutes(e.start, e.end); }, 0);
+  var facturableCount = state.entries.filter(function (e) { return e.facturable; }).length;
+  var total = state.entries.length;
+  var facturablePct = total > 0 ? Math.round((facturableCount / total) * 100) : 0;
+
+  var wrap = document.createElement("div");
+  wrap.id = "stats-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:55;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;max-height:85vh;overflow-y:auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:18px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+  html += '<h2 style="font-family:\'Oswald\',sans-serif;font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin:0;">📊 Statistiques</h2>';
+  html += '<button id="stats-close" style="background:transparent;border:none;color:' + COLORS.inkDim + ';padding:4px;font-size:20px;">✕</button></div>';
+
+  html += '<div style="display:flex;gap:10px;margin-bottom:14px;">';
+  html += '<div style="flex:1;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:10px;text-align:center;"><div style="font-size:11px;color:' + COLORS.inkDim + ';text-transform:uppercase;">Interventions</div><div style="font-family:\'Space Mono\',monospace;font-size:20px;font-weight:700;margin-top:4px;">' + total + '</div></div>';
+  html += '<div style="flex:1;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:10px;text-align:center;"><div style="font-size:11px;color:' + COLORS.inkDim + ';text-transform:uppercase;">Total heures</div><div style="font-family:\'Space Mono\',monospace;font-size:20px;font-weight:700;margin-top:4px;color:' + COLORS.tealLight + ';">' + fmtDuration(totalMinutes) + '</div></div>';
+  html += '<div style="flex:1;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:10px;text-align:center;"><div style="font-size:11px;color:' + COLORS.inkDim + ';text-transform:uppercase;">Heures sup.</div><div style="font-family:\'Space Mono\',monospace;font-size:20px;font-weight:700;margin-top:4px;color:' + COLORS.amberLight + ';">' + fmtDuration(totalOvertime) + '</div></div>';
+  html += '</div>';
+
+  html += '<div style="margin-bottom:18px;">';
+  html += '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:' + COLORS.inkDim + ';margin-bottom:5px;"><span>Facturable</span><span>' + facturableCount + ' / ' + total + ' (' + facturablePct + '%)</span></div>';
+  html += '<div style="height:10px;background:#0A2620;border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + facturablePct + '%;background:' + COLORS.teal + ';"></div></div>';
+  html += '</div>';
+
+  html += '<div style="font-family:\'Oswald\',sans-serif;font-size:12px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:8px;">Détail par mois</div>';
+  if (monthKeys.length === 0) {
+    html += '<div style="color:' + COLORS.inkDim + ';font-size:13px;">Aucune donnée pour l\'instant.</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+    monthKeys.forEach(function (k) {
+      var m = byMonth[k];
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:7px;padding:8px 10px;font-size:12.5px;">';
+      html += '<span style="text-transform:capitalize;">' + esc(monthLabel(k)) + '</span>';
+      html += '<span style="display:flex;gap:10px;font-family:\'Space Mono\',monospace;color:' + COLORS.inkDim + ';"><span>' + m.count + ' fiche(s)</span><span style="color:' + COLORS.tealLight + ';">' + fmtDuration(m.minutes) + '</span>' + (m.overtime > 0 ? '<span style="color:' + COLORS.amberLight + ';">+' + fmtDuration(m.overtime) + '</span>' : '') + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+  document.getElementById("stats-close").onclick = function () { wrap.remove(); };
+}
+
+// --- Export mensuel (CSV / PDF) ---
+function monthEntries(key) {
+  return state.entries.filter(function (e) { return monthKey(e.date) === key; }).sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return a.start < b.start ? -1 : 1;
+  });
+}
+
+function openExportMenu(key) {
+  var existing = document.getElementById("export-menu");
+  if (existing) existing.remove();
+
+  var wrap = document.createElement("div");
+  wrap.id = "export-menu";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:60;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:14px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  function actionBtn(label) {
+    return '<button class="exp-btn" style="width:100%;text-align:left;padding:14px 12px;background:transparent;border:none;border-bottom:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';font-size:15px;">' + label + '</button>';
+  }
+  panel.innerHTML =
+    '<div style="font-family:\'Oswald\',sans-serif;font-size:13px;color:' + COLORS.inkDim + ';text-transform:uppercase;margin-bottom:6px;padding:0 12px;">' + esc(monthLabel(key)) + '</div>' +
+    actionBtn("📊 Excel (CSV)") +
+    actionBtn("🖨️ PDF (impression)") +
+    '<button id="exp-cancel" style="width:100%;text-align:center;padding:14px 12px;background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:14px;margin-top:4px;">Annuler</button>';
+
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  var btns = panel.querySelectorAll(".exp-btn");
+  btns[0].onclick = function () { wrap.remove(); exportMonthCSV(key); };
+  btns[1].onclick = function () { wrap.remove(); exportMonthPDF(key); };
+  document.getElementById("exp-cancel").onclick = function () { wrap.remove(); };
+}
+
+function csvEscape(v) {
+  var s = String(v == null ? "" : v);
+  if (/[",;\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportMonthCSV(key) {
+  var list = monthEntries(key);
+  var rows = [["Date", "Début", "Fin", "Durée", "Heures sup.", "Lieu", "Client", "N° OR", "OR enregistré", "Facturable", "Notes"]];
+  list.forEach(function (e) {
+    rows.push([
+      e.date, e.start, e.end, fmtDuration(durationMinutes(e.start, e.end)), fmtDuration(overtimeMinutes(e.start, e.end)),
+      e.lieu || "", e.client || "", e.orNumber || "", e.orSaved ? "Oui" : "Non", e.facturable ? "Oui" : "Non", e.notes || ""
+    ]);
+  });
+  var csv = "\uFEFF" + rows.map(function (r) { return r.map(csvEscape).join(";"); }).join("\r\n");
+  var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "interventions-" + key + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportMonthPDF(key) {
+  var list = monthEntries(key);
+  var area = document.getElementById("print-area");
+  var html = '<h1 style="font-family:sans-serif;">DMP LOC — Interventions ' + esc(monthLabel(key)) + '</h1>';
+  html += '<table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:12px;">';
+  html += '<thead><tr>' + ["Date", "Début", "Fin", "Durée", "H. sup.", "Lieu", "Client", "N° OR", "Factu."].map(function (h) {
+    return '<th style="border:1px solid #999;padding:4px;text-align:left;background:#eee;">' + h + '</th>';
+  }).join('') + '</tr></thead><tbody>';
+  var totalMin = 0, totalOt = 0;
+  list.forEach(function (e) {
+    var dur = durationMinutes(e.start, e.end), ot = overtimeMinutes(e.start, e.end);
+    totalMin += dur; totalOt += ot;
+    html += '<tr>' + [
+      fmtDateShort(e.date), e.start, e.end, fmtDuration(dur), ot > 0 ? fmtDuration(ot) : "-",
+      e.lieu || "-", e.client || "-", e.orNumber || "-", e.facturable ? "Oui" : "Non"
+    ].map(function (c) { return '<td style="border:1px solid #ccc;padding:4px;">' + esc(c) + '</td>'; }).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  html += '<p style="font-family:sans-serif;font-size:13px;margin-top:12px;"><strong>Total : ' + fmtDuration(totalMin) + '</strong>' + (totalOt > 0 ? ' — dont ' + fmtDuration(totalOt) + ' d\'heures sup.' : '') + '</p>';
+  area.innerHTML = html;
+  window.print();
+}
+
+// --- Mode test (données fictives, non persistées) ---
+var FAKE_LIEUX = ["Chantier Saint-Denis", "Zone industrielle Le Port", "Chantier Sainte-Marie", "Dépôt Sainte-Suzanne", "Chantier Saint-Paul", "Chantier Saint-Pierre", "Zone artisanale Sainte-Clotilde"];
+var FAKE_CLIENTS = ["Heliowatt", "SBTPC", "Vinci Construction", "Colas", "Eiffage", "M. Dupont (particulier)", "Bourbon Béton"];
+var FAKE_NOTES = ["", "", "RAS", "Panne électrique résolue", "Maintenance préventive", "Casse client", "Intervention urgente", "Livraison matériel"];
+
+function randChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function generateFakeEntries(count) {
+  var out = [];
+  var today = new Date();
+  for (var i = 0; i < count; i++) {
+    var monthsBack = randInt(0, 5);
+    var d = new Date(today.getFullYear(), today.getMonth() - monthsBack, randInt(1, 28));
+    var dateStr = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+    var startH = randInt(6, 10);
+    var endH = Math.min(19, startH + randInt(4, 9));
+    var start = pad2(startH) + ":" + randChoice(["00", "15", "30"]);
+    var end = pad2(endH) + ":" + randChoice(["00", "15", "30"]);
+    var facturable = Math.random() > 0.2;
+    var orSaved = Math.random() > 0.4;
+    out.push({
+      id: "test-" + genId(),
+      date: dateStr, start: start, end: end,
+      lieu: randChoice(FAKE_LIEUX), client: randChoice(FAKE_CLIENTS), notes: randChoice(FAKE_NOTES),
+      orSaved: orSaved, orNumber: orSaved ? (d.getFullYear() + "-" + randInt(1000, 9999)) : "",
+      facturable: facturable
+    });
+  }
+  return out;
+}
+
+function toggleTestMode() {
+  if (state.testMode) {
+    // retour aux vraies données
+    state.testMode = false;
+    state.entries = state.realEntriesBackup || [];
+    state.photoCounts = state.realPhotoCountsBackup || {};
+    state.realEntriesBackup = null;
+    state.realPhotoCountsBackup = null;
+    renderRoot();
+  } else {
+    state.realEntriesBackup = state.entries;
+    state.realPhotoCountsBackup = state.photoCounts;
+    state.entries = generateFakeEntries(45);
+    state.photoCounts = {};
+    state.testMode = true;
+    state.pendingDeleteId = null;
+    renderRoot();
+  }
+}
+
 function attachRootListeners() {
   var btnNew = document.getElementById("btn-new");
   if (btnNew) btnNew.onclick = openNewForm;
   var btnRetry = document.getElementById("btn-retry");
   if (btnRetry) btnRetry.onclick = loadEntries;
+  var btnStats = document.getElementById("btn-stats");
+  if (btnStats) btnStats.onclick = openStatsModal;
+  var btnTest = document.getElementById("btn-test");
+  if (btnTest) btnTest.onclick = toggleTestMode;
   var chkFilter = document.getElementById("chk-filter-or");
   if (chkFilter) chkFilter.onchange = function () { state.filterOrUnsaved = chkFilter.checked; renderRoot(); };
   var chkFilterFact = document.getElementById("chk-filter-facturable");
   if (chkFilterFact) chkFilterFact.onchange = function () { state.filterFacturableOnly = chkFilterFact.checked; renderRoot(); };
+
+  var searchInput = document.getElementById("search-input");
+  if (searchInput) {
+    searchInput.oninput = function () {
+      state.searchQuery = searchInput.value;
+      clearTimeout(window.__searchDebounce);
+      window.__searchDebounce = setTimeout(function () {
+        var caret = searchInput.selectionStart;
+        renderRoot();
+        var newInput = document.getElementById("search-input");
+        if (newInput) { newInput.focus(); newInput.setSelectionRange(caret, caret); }
+      }, 250);
+    };
+  }
+
+  document.querySelectorAll(".btn-export-month").forEach(function (btn) {
+    btn.onclick = function () { openExportMenu(btn.getAttribute("data-month")); };
+  });
 
   document.querySelectorAll(".ticket-edit").forEach(function (btn) {
     btn.onclick = function () {
@@ -371,9 +683,20 @@ function attachRootListeners() {
 
 function loadEntries() {
   state.loading = true; state.loadError = null; renderRoot();
+
+  if (!navigator.onLine) {
+    state.entries = loadCache();
+    state.offlineMode = true;
+    state.loading = false;
+    renderRoot();
+    return;
+  }
+
   sbFetchEntries().then(function (rows) {
     state.entries = rows;
+    state.offlineMode = false;
     state.loading = false;
+    saveCache(rows);
     renderRoot();
     Promise.all(rows.map(function (r) { return sbListPhotos(r.id).then(function (p) { return [r.id, p.length]; }); }))
       .then(function (pairs) {
@@ -383,26 +706,70 @@ function loadEntries() {
         renderRoot();
       });
   }).catch(function (e) {
-    state.loadError = (e && e.message) ? e.message : String(e);
-    state.loading = false;
+    var cached = loadCache();
+    if (cached.length > 0) {
+      state.entries = cached;
+      state.offlineMode = true;
+      state.loading = false;
+      renderRoot();
+    } else {
+      state.loadError = (e && e.message) ? e.message : String(e);
+      state.loading = false;
+      renderRoot();
+    }
+  });
+}
+
+function trySyncPending() {
+  flushQueue().then(function (remaining) {
+    if (remaining !== undefined) {
+      state.pendingCount = remaining;
+      if (remaining === 0) loadEntries();
+      else renderRoot();
+    }
+  });
+}
+window.addEventListener("online", trySyncPending);
+
+function confirmDeleteEntry(id) {
+  if (state.testMode) {
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    state.pendingDeleteId = null;
+    renderRoot();
+    return;
+  }
+  if (!navigator.onLine) {
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    saveCache(state.entries);
+    queueAdd({ type: "delete", id: id });
+    state.pendingCount = getQueue().length;
+    state.pendingDeleteId = null;
+    renderRoot();
+    return;
+  }
+  sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
+    state.pendingDeleteId = null;
+    loadEntries();
+  }).catch(function () {
+    // échec réseau probable : on met en file d'attente plutôt que de bloquer
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    saveCache(state.entries);
+    queueAdd({ type: "delete", id: id });
+    state.pendingCount = getQueue().length;
+    state.pendingDeleteId = null;
     renderRoot();
   });
 }
 
-function confirmDeleteEntry(id) {
-  sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
-    state.pendingDeleteId = null;
-    loadEntries();
-  }).catch(function (e) { console.error(e); state.pendingDeleteId = null; renderRoot(); });
-}
-
 // --- Formulaire (modale) ---
 function openNewForm() {
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  if (state.testMode) { alert("Désactive le mode test (⚙️) pour ajouter une vraie intervention."); return; }
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  if (state.testMode) { alert("Désactive le mode test (⚙️) pour modifier tes vraies interventions."); return; }
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -447,6 +814,8 @@ function renderForm() {
   html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
   html += '<input id="f-or-saved" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.orSaved ? ' checked' : '') + '/>';
   html += 'OR enregistré sur PC</label>';
+
+  html += '<label class="field"><span>N° OR</span><input id="f-or-number" type="text" placeholder="Ex. 2026-0458" value="' + esc(form.orNumber) + '"/></label>';
 
   html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
   html += '<input id="f-facturable" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.facturable ? ' checked' : '') + '/>';
@@ -651,6 +1020,7 @@ function saveForm() {
   var client = document.getElementById("f-client").value;
   var notes = document.getElementById("f-notes").value;
   var orSaved = document.getElementById("f-or-saved").checked;
+  var orNumber = document.getElementById("f-or-number").value;
   var facturable = document.getElementById("f-facturable").checked;
 
   if (!date || !start || !end) {
@@ -661,32 +1031,63 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved, facturable: facturable };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
+
+  function saveOffline() {
+    var next = state.entries.filter(function (e) { return e.id !== entry.id; });
+    next.push(entry);
+    state.entries = next;
+    state.photoCounts[entry.id] = okPhotosCount;
+    saveCache(state.entries);
+    queueAdd({ type: "upsert", id: entry.id, payload: entry });
+    state.pendingCount = getQueue().length;
+    closeForm();
+    renderRoot();
+  }
+
+  if (!navigator.onLine) {
+    saveOffline();
+    return;
+  }
 
   sbUpsertEntry(entry).then(function () {
     state.photoCounts[entry.id] = okPhotosCount;
     closeForm();
     loadEntries();
   }).catch(function (e) {
-    form.error = "L'enregistrement a échoué. Détail : " + ((e && e.message) ? e.message : String(e));
-    renderFormError();
+    // échec réseau probable (pas forcément une vraie erreur Supabase) : on passe en file d'attente
+    saveOffline();
   });
 }
 
 function deleteFromForm() {
   var id = form.id;
+  if (!navigator.onLine) {
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    saveCache(state.entries);
+    queueAdd({ type: "delete", id: id });
+    state.pendingCount = getQueue().length;
+    closeForm();
+    renderRoot();
+    return;
+  }
   sbDeleteEntry(id).then(function () { return sbDeleteAllPhotos(id); }).then(function () {
     closeForm();
     loadEntries();
-  }).catch(function (e) {
-    form.error = "La suppression a échoué. Détail : " + ((e && e.message) ? e.message : String(e));
-    renderFormError();
+  }).catch(function () {
+    state.entries = state.entries.filter(function (e) { return e.id !== id; });
+    saveCache(state.entries);
+    queueAdd({ type: "delete", id: id });
+    state.pendingCount = getQueue().length;
+    closeForm();
+    renderRoot();
   });
 }
 
 // --- Démarrage ---
 loadEntries();
+if (getQueue().length > 0 && navigator.onLine) trySyncPending();
 
 // Écran de lancement : reste affiché le temps que le GIF joue en entier, puis s'efface en douceur
 (function () {
