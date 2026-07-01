@@ -131,14 +131,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, facturable: row.facturable !== false };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, facturable: entry.facturable !== false
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -284,6 +284,7 @@ function ticketHTML(entry) {
   out += entry.orSaved
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR ✓</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR</span>';
+  if (!entry.facturable) out += '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.inkDim + ';border:1px solid ' + COLORS.inkDim + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
   out += '</span>';
   out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + COLORS.amberLight + ';">' + fmtDuration(dur) + '</span></div>';
   out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
@@ -364,11 +365,11 @@ function confirmDeleteEntry(id) {
 
 // --- Formulaire (modale) ---
 function openNewForm() {
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", orSaved: false, facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, orSaved: !!entry.orSaved, facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -413,6 +414,10 @@ function renderForm() {
   html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
   html += '<input id="f-or-saved" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.orSaved ? ' checked' : '') + '/>';
   html += 'OR enregistré sur PC</label>';
+
+  html += '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">';
+  html += '<input id="f-facturable" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.facturable ? ' checked' : '') + '/>';
+  html += 'Facturable</label>';
 
   html += '<label class="field"><span id="f-photos-label">Photos</span><div id="f-photos-grid"></div><input id="f-photo-input" type="file" accept="image/*" multiple style="display:none;"/></label>';
   html += '</div>';
@@ -613,6 +618,7 @@ function saveForm() {
   var client = document.getElementById("f-client").value;
   var notes = document.getElementById("f-notes").value;
   var orSaved = document.getElementById("f-or-saved").checked;
+  var facturable = document.getElementById("f-facturable").checked;
 
   if (!date || !start || !end) {
     form.error = "Renseigne au moins la date, l'heure de début et de fin.";
@@ -622,7 +628,7 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, notes: notes, orSaved: orSaved, facturable: facturable };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
 
   sbUpsertEntry(entry).then(function () {
