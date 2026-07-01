@@ -20,9 +20,9 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #0F3A30; font-family: 'Inter', sans-serif; color: #F2EFE6; }
+  html, body { margin: 0; padding: 0; background: var(--bg, #0F3A30); font-family: 'Inter', sans-serif; color: var(--ink, #F2EFE6); }
   input[type="date"], input[type="time"] { color-scheme: dark; }
-  input, textarea, select { width: 100%; box-sizing: border-box; background: #0F1213; border: 1px solid #2A6153; border-radius: 7px; padding: 10px 12px; color: #F2EFE6; font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
+  input, textarea, select { width: 100%; box-sizing: border-box; background: var(--input-bg, #0F1213); border: 1px solid var(--border, #2A6153); border-radius: 7px; padding: 10px 12px; color: var(--ink, #F2EFE6); font-family: 'Inter', sans-serif; font-size: 15px; outline: none; }
   label.field { display: flex; flex-direction: column; gap: 5px; }
   label.field span { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #9FBAAF; }
   button { font-family: 'Inter', sans-serif; cursor: pointer; }
@@ -68,14 +68,48 @@ if (!window.supabase) {
   throw new Error("La librairie Supabase ne s'est pas chargée (réseau ou bloqueur de contenu). Recharge la page.");
 }
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- Compte (multi-utilisateurs) ---
+var currentSession = null;
+function currentUserId() { return currentSession && currentSession.user ? currentSession.user.id : null; }
+function currentUserEmail() { return currentSession && currentSession.user ? currentSession.user.email : ""; }
+function sbSignUp(email, password) { return sb.auth.signUp({ email: email, password: password }); }
+function sbSignIn(email, password) { return sb.auth.signInWithPassword({ email: email, password: password }); }
+function sbSignOut() { return sb.auth.signOut(); }
+
 var PHOTOS_BUCKET = "photos";
 var MAX_PHOTOS = 6;
 var LOGO_DATA_URI = "data:image/png;base64,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";
 
-var COLORS = {
+var DARK_PALETTE = {
   bg: "#0F3A30", surface: "#154A3D", surfaceRaised: "#1B5747", ink: "#F2EFE6", inkDim: "#9FBAAF",
-  amber: "#C4272C", teal: "#4FB68E", border: "#2A6153", danger: "#E2574F", amberLight: "#F0827D", tealLight: "#7FE0B4"
+  amber: "#C4272C", teal: "#4FB68E", border: "#2A6153", danger: "#E2574F", amberLight: "#F0827D", tealLight: "#7FE0B4",
+  cardBg1: "#2A3234", cardBg2: "#1A2022", digitBg: "#0A2620", inputBg: "#0F1213"
 };
+var SUN_PALETTE = {
+  bg: "#F2EFE3", surface: "#FFFFFF", surfaceRaised: "#FFFFFF", ink: "#16211C", inkDim: "#4B5B54",
+  amber: "#B01F24", teal: "#0E7A52", border: "#C9C2AC", danger: "#B0342B", amberLight: "#B0342B", tealLight: "#0E7A52",
+  cardBg1: "#FFFFFF", cardBg2: "#EFEAD8", digitBg: "#FFFFFF", inputBg: "#FFFFFF"
+};
+var COLORS = Object.assign({}, DARK_PALETTE);
+var SUN_KEY = "carnet:sunMode";
+function getSunMode() { try { return localStorage.getItem(SUN_KEY) === "1"; } catch (e) { return false; } }
+function applyTheme(sunMode) {
+  Object.assign(COLORS, sunMode ? SUN_PALETTE : DARK_PALETTE);
+  document.documentElement.style.setProperty("--bg", COLORS.bg);
+  document.documentElement.style.setProperty("--ink", COLORS.ink);
+  document.documentElement.style.setProperty("--input-bg", COLORS.inputBg);
+  document.documentElement.style.setProperty("--border", COLORS.border);
+  document.body.style.background = COLORS.bg;
+  document.body.style.color = COLORS.ink;
+}
+function toggleSunMode() {
+  var next = !getSunMode();
+  try { localStorage.setItem(SUN_KEY, next ? "1" : "0"); } catch (e) {}
+  applyTheme(next);
+  renderRoot();
+}
+applyTheme(getSunMode());
 
 var CATEGORIES = [
   { id: "maintenance", label: "Maintenance", color: "#4FB68E" },
@@ -161,14 +195,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false, category: row.category || "" };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false, category: row.category || "", difficulty: row.difficulty || 0 };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false, category: entry.category || null
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false, category: entry.category || null, difficulty: entry.difficulty || null, user_id: currentUserId()
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -301,9 +335,7 @@ function renderRoot() {
   html += '<div><div style="font-family:\'Oswald\',sans-serif;font-size:12px;letter-spacing:0.22em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:4px;">Carnet de bord</div>';
   html += '<h1 style="font-family:\'Oswald\',sans-serif;font-size:26px;font-weight:700;margin:0;">Mes interventions</h1></div>';
   html += '<div style="flex-shrink:0;display:flex;align-items:center;gap:8px;">';
-  html += '<button id="btn-stats" aria-label="Statistiques" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:18px;display:flex;align-items:center;justify-content:center;">📊</button>';
-  html += '<button id="btn-test" aria-label="Mode test" style="width:42px;height:42px;flex-shrink:0;background:' + (state.testMode ? COLORS.amber : COLORS.surface) + ';border:1px solid ' + (state.testMode ? COLORS.amber : COLORS.border) + ';border-radius:8px;color:' + (state.testMode ? '#F2EFE6' : COLORS.ink) + ';font-size:18px;display:flex;align-items:center;justify-content:center;">⚙️</button>';
-  html += '<button id="btn-lock" aria-label="Verrouillage" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:18px;display:flex;align-items:center;justify-content:center;">' + (getPin() ? '🔒' : '🔓') + '</button>';
+  html += '<button id="btn-menu" aria-label="Menu" style="width:42px;height:42px;flex-shrink:0;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;color:' + COLORS.ink + ';font-size:20px;display:flex;align-items:center;justify-content:center;">☰</button>';
   html += '<div style="display:flex;align-items:center;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;padding:6px 10px;">';
   html += '<img src="' + LOGO_DATA_URI + '" alt="DMP" style="height:30px;width:auto;display:block;"/></div>';
   html += '</div>';
@@ -382,10 +414,10 @@ function hourMeterHTML(totalMinutes, label, color, hourDigits) {
   var hStr = String(Math.min(h, Math.pow(10, hourDigits) - 1)).padStart(hourDigits, "0");
   function digits(str) {
     return str.split("").map(function (ch) {
-      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:#0A2620;border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
+      return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:' + COLORS.digitBg + ';border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
     }).join('');
   }
-  var out = '<div style="flex:1;min-width:0;background:linear-gradient(180deg,#2A3234,#1A2022);border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 10px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
+  var out = '<div style="flex:1;min-width:0;background:linear-gradient(180deg,' + COLORS.cardBg1 + ',' + COLORS.cardBg2 + ');border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 10px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
   out += '<div style="font-family:\'Oswald\',sans-serif;font-size:10.5px;letter-spacing:0.14em;color:' + color + ';text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</div>';
   out += '<div style="display:flex;align-items:flex-end;gap:4px;"><div style="display:flex;gap:2px;">' + digits(hStr) + '</div>';
   out += '<span style="font-family:\'Space Mono\',monospace;color:' + COLORS.inkDim + ';font-size:13px;margin-bottom:5px;">h</span>';
@@ -395,13 +427,13 @@ function hourMeterHTML(totalMinutes, label, color, hourDigits) {
 
 function digitBoxesHTML(str, color) {
   return str.split("").map(function (ch) {
-    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:#0A2620;border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.4ch;min-width:20px;height:32px;background:' + COLORS.digitBg + ';border:1px solid ' + COLORS.border + ';border-radius:3px;color:' + color + ';font-family:\'Space Mono\',monospace;font-weight:700;font-size:18px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">' + ch + '</span>';
   }).join('');
 }
 
 function counterHTML(count, total, label, color, digitsCount) {
   var countStr = String(Math.min(count, Math.pow(10, digitsCount) - 1)).padStart(digitsCount, "0");
-  var out = '<div style="flex:0 0 auto;width:auto;background:linear-gradient(180deg,#2A3234,#1A2022);border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 14px;display:inline-flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
+  var out = '<div style="flex:0 0 auto;width:auto;background:linear-gradient(180deg,' + COLORS.cardBg1 + ',' + COLORS.cardBg2 + ');border:1px solid ' + COLORS.border + ';border-radius:10px;padding:12px 14px;display:inline-flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.35);">';
   out += '<div style="font-family:\'Oswald\',sans-serif;font-size:10.5px;letter-spacing:0.14em;color:' + color + ';text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</div>';
   out += '<div style="display:flex;gap:2px;">' + digitBoxesHTML(countStr, color) + '</div></div>';
   return out;
@@ -439,6 +471,7 @@ function ticketHTML(entry) {
     if (photoCount > 0) out += '<span>📷 ' + photoCount + '</span>';
     out += '</div>';
   }
+  if (entry.difficulty > 0) out += '<div style="margin-top:4px;font-size:12px;color:' + COLORS.amber + ';">' + "★".repeat(entry.difficulty) + '<span style="color:' + COLORS.border + ';">' + "★".repeat(5 - entry.difficulty) + '</span></div>';
   if (entry.notes) out += '<div style="margin-top:6px;font-size:12.5px;color:' + COLORS.inkDim + ';font-style:italic;">📝 ' + esc(entry.notes) + '</div>';
   out += '</button>';
 
@@ -497,7 +530,7 @@ function openStatsModal() {
 
   html += '<div style="margin-bottom:18px;">';
   html += '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:' + COLORS.inkDim + ';margin-bottom:5px;"><span>Facturable</span><span>' + facturableCount + ' / ' + total + ' (' + facturablePct + '%)</span></div>';
-  html += '<div style="height:10px;background:#0A2620;border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + facturablePct + '%;background:' + COLORS.teal + ';"></div></div>';
+  html += '<div style="height:10px;background:' + COLORS.digitBg + ';border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + facturablePct + '%;background:' + COLORS.teal + ';"></div></div>';
   html += '</div>';
 
   html += '<div style="font-family:\'Oswald\',sans-serif;font-size:12px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:8px;">Détail par mois</div>';
@@ -760,6 +793,53 @@ function showLockScreen(onUnlock) {
   });
 }
 
+// --- Écran de connexion (compte) ---
+function showAuthScreen() {
+  if (document.getElementById("auth-screen")) return;
+  var wrap = document.createElement("div");
+  wrap.id = "auth-screen";
+  wrap.style.cssText = "position:fixed;inset:0;background:" + COLORS.bg + ";display:flex;align-items:center;justify-content:center;z-index:9998;padding:24px;";
+
+  function render(mode) {
+    var isSignUp = mode === "signup";
+    wrap.innerHTML =
+      '<div style="width:100%;max-width:360px;">' +
+      '<div style="text-align:center;margin-bottom:20px;"><img src="' + LOGO_DATA_URI + '" style="height:44px;"/></div>' +
+      '<h2 style="font-family:\'Oswald\',sans-serif;font-size:17px;text-transform:uppercase;text-align:center;margin-bottom:16px;">' + (isSignUp ? "Créer un compte" : "Connexion") + '</h2>' +
+      '<div id="auth-error" style="color:' + COLORS.danger + ';font-size:12.5px;margin-bottom:8px;text-align:center;"></div>' +
+      '<label class="field" style="margin-bottom:10px;"><span>Email</span><input id="auth-email" type="email" autocomplete="email"/></label>' +
+      '<label class="field" style="margin-bottom:16px;"><span>Mot de passe</span><input id="auth-password" type="password" autocomplete="' + (isSignUp ? "new-password" : "current-password") + '"/></label>' +
+      '<button id="auth-submit" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;width:100%;font-weight:700;margin-bottom:10px;">' + (isSignUp ? "Créer le compte" : "Se connecter") + '</button>' +
+      '<button id="auth-switch" style="background:transparent;border:none;color:' + COLORS.inkDim + ';width:100%;font-size:13px;text-align:center;">' + (isSignUp ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? En créer un") + '</button>' +
+      '</div>';
+
+    document.getElementById("auth-switch").onclick = function () { render(isSignUp ? "signin" : "signup"); };
+    document.getElementById("auth-submit").onclick = function () {
+      var email = document.getElementById("auth-email").value.trim();
+      var password = document.getElementById("auth-password").value;
+      var errBox = document.getElementById("auth-error");
+      errBox.textContent = "";
+      if (!email || !password) { errBox.textContent = "Renseigne un email et un mot de passe."; return; }
+      var action = isSignUp ? sbSignUp(email, password) : sbSignIn(email, password);
+      action.then(function (res) {
+        if (res.error) { errBox.textContent = res.error.message; return; }
+        if (isSignUp && res.data && !res.data.session) {
+          errBox.style.color = COLORS.teal;
+          errBox.textContent = "Compte créé ! Vérifie tes emails pour confirmer, puis connecte-toi.";
+          return;
+        }
+        // la session sera captée par onAuthStateChange
+      });
+    };
+  }
+  render("signin");
+  document.body.appendChild(wrap);
+}
+function hideAuthScreen() {
+  var el = document.getElementById("auth-screen");
+  if (el) el.remove();
+}
+
 // --- Rappel du soir ---
 function dismissReminder() {
   try { localStorage.setItem("carnet:reminderDismissed", todayISO()); } catch (e) {}
@@ -778,17 +858,195 @@ function shouldShowReminder() {
   return true;
 }
 
+// --- Menu principal (regroupe les fonctions annexes) ---
+function openMainMenu() {
+  var existing = document.getElementById("main-menu");
+  if (existing) existing.remove();
+
+  var wrap = document.createElement("div");
+  wrap.id = "main-menu";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:58;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:14px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  function item(id, label) {
+    return '<button class="menu-item" data-action="' + id + '" style="width:100%;text-align:left;padding:14px 12px;background:transparent;border:none;border-bottom:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';font-size:15px;">' + label + '</button>';
+  }
+
+  var html = '';
+  html += item("stats", "📊 Statistiques");
+  html += item("calendar", "📅 Vue calendrier");
+  html += item("export-year", "🗓️ Exporter toute l'année");
+  html += item("sun", getSunMode() ? "🌙 Revenir au thème sombre" : "☀️ Mode plein soleil");
+  html += item("test", state.testMode ? "⚙️ Quitter le mode test" : "⚙️ Mode test (données fictives)");
+  html += item("lock", "🔒 Verrouillage de l'app");
+  if (currentSession) html += item("logout", "👤 Déconnexion (" + esc(currentUserEmail()) + ")");
+  html += '<button id="menu-cancel" style="width:100%;text-align:center;padding:14px 12px;background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:14px;margin-top:4px;">Fermer</button>';
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  panel.querySelectorAll(".menu-item").forEach(function (btn) {
+    btn.onclick = function () {
+      var action = btn.getAttribute("data-action");
+      wrap.remove();
+      if (action === "stats") openStatsModal();
+      else if (action === "calendar") openCalendarModal();
+      else if (action === "export-year") openExportYearMenu();
+      else if (action === "sun") toggleSunMode();
+      else if (action === "test") toggleTestMode();
+      else if (action === "lock") openLockSettings();
+      else if (action === "logout") { sbSignOut().then(function () { location.reload(); }); }
+    };
+  });
+  document.getElementById("menu-cancel").onclick = function () { wrap.remove(); };
+}
+
+// --- Vue calendrier ---
+var calendarViewMonth = null; // "YYYY-MM"
+function openCalendarModal() {
+  if (!calendarViewMonth) calendarViewMonth = monthKey(todayISO());
+  renderCalendarModal();
+}
+function renderCalendarModal() {
+  var existing = document.getElementById("calendar-modal");
+  if (existing) existing.remove();
+
+  var byDay = {};
+  state.entries.forEach(function (e) {
+    if (monthKey(e.date) !== calendarViewMonth) return;
+    if (!byDay[e.date]) byDay[e.date] = { minutes: 0, count: 0 };
+    byDay[e.date].minutes += durationMinutes(e.start, e.end);
+    byDay[e.date].count += 1;
+  });
+
+  var d = new Date(calendarViewMonth + "-01T00:00:00");
+  var year = d.getFullYear(), month = d.getMonth();
+  var firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // lundi = 0
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  var wrap = document.createElement("div");
+  wrap.id = "calendar-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:58;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:16px;max-height:85vh;overflow-y:auto;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+  html += '<button id="cal-prev" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;padding:6px 10px;">←</button>';
+  html += '<span style="font-family:\'Oswald\',sans-serif;font-size:15px;text-transform:capitalize;">' + esc(monthLabel(calendarViewMonth)) + '</span>';
+  html += '<button id="cal-next" style="background:transparent;border:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';border-radius:6px;padding:6px 10px;">→</button>';
+  html += '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:11px;color:' + COLORS.inkDim + ';text-align:center;margin-bottom:4px;">';
+  ["L", "M", "M", "J", "V", "S", "D"].forEach(function (l) { html += '<div>' + l + '</div>'; });
+  html += '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
+  for (var i = 0; i < firstDow; i++) html += '<div></div>';
+  for (var day = 1; day <= daysInMonth; day++) {
+    var dateStr = calendarViewMonth + "-" + pad2(day);
+    var info = byDay[dateStr];
+    var isToday = dateStr === todayISO();
+    html += '<button class="cal-day" data-date="' + dateStr + '" style="aspect-ratio:1;border-radius:6px;border:1px solid ' + (isToday ? COLORS.amber : COLORS.border) + ';background:' + (info ? COLORS.surface : "transparent") + ';color:' + COLORS.ink + ';font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px;">';
+    html += '<span>' + day + '</span>';
+    if (info) html += '<span style="width:5px;height:5px;border-radius:50%;background:' + COLORS.teal + ';"></span>';
+    html += '</button>';
+  }
+  html += '</div>';
+
+  html += '<div id="cal-day-detail" style="margin-top:16px;font-size:13px;color:' + COLORS.inkDim + ';"></div>';
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  document.getElementById("cal-prev").onclick = function () { calendarViewMonth = shiftMonthKey(calendarViewMonth, -1); renderCalendarModal(); };
+  document.getElementById("cal-next").onclick = function () { calendarViewMonth = shiftMonthKey(calendarViewMonth, 1); renderCalendarModal(); };
+  panel.querySelectorAll(".cal-day").forEach(function (btn) {
+    btn.onclick = function () {
+      var date = btn.getAttribute("data-date");
+      var info = byDay[date];
+      var detail = document.getElementById("cal-day-detail");
+      if (!info) { detail.textContent = "Aucune intervention ce jour-là."; return; }
+      detail.innerHTML = '<strong style="color:' + COLORS.ink + ';">' + esc(fmtDateShort(date)) + '</strong> — ' + info.count + ' fiche(s), ' + fmtDuration(info.minutes) + ' au total.';
+    };
+  });
+}
+function shiftMonthKey(key, delta) {
+  var d = new Date(key + "-01T00:00:00");
+  d.setMonth(d.getMonth() + delta);
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1);
+}
+
+// --- Export annuel ---
+function openExportYearMenu() {
+  var years = {};
+  state.entries.forEach(function (e) { years[e.date.slice(0, 4)] = true; });
+  var yearList = Object.keys(years).sort().reverse();
+  if (yearList.length === 0) yearList = [String(new Date().getFullYear())];
+
+  var wrap = document.createElement("div");
+  wrap.id = "export-year-menu";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:60;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:14px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '<div style="font-family:\'Oswald\',sans-serif;font-size:13px;color:' + COLORS.inkDim + ';text-transform:uppercase;margin-bottom:6px;padding:0 12px;">Choisis l\'année</div>';
+  yearList.forEach(function (y) {
+    html += '<button class="exp-year-btn" data-year="' + y + '" style="width:100%;text-align:left;padding:14px 12px;background:transparent;border:none;border-bottom:1px solid ' + COLORS.border + ';color:' + COLORS.ink + ';font-size:15px;">' + y + '</button>';
+  });
+  html += '<button id="expy-cancel" style="width:100%;text-align:center;padding:14px 12px;background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:14px;margin-top:4px;">Annuler</button>';
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  panel.querySelectorAll(".exp-year-btn").forEach(function (btn) {
+    btn.onclick = function () { wrap.remove(); exportYearCSV(btn.getAttribute("data-year")); };
+  });
+  document.getElementById("expy-cancel").onclick = function () { wrap.remove(); };
+}
+function exportYearCSV(year) {
+  var list = state.entries.filter(function (e) { return e.date.slice(0, 4) === year; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  var rows = [["Date", "Début", "Fin", "Durée", "Heures sup.", "Lieu", "Client", "Catégorie", "N° OR", "OR enregistré", "Facturable", "Difficulté", "Notes"]];
+  list.forEach(function (e) {
+    var cat = categoryInfo(e.category);
+    rows.push([
+      e.date, e.start, e.end, fmtDuration(durationMinutes(e.start, e.end)), fmtDuration(overtimeMinutes(e.start, e.end)),
+      e.lieu || "", e.client || "", cat ? cat.label : "", e.orNumber || "", e.orSaved ? "Oui" : "Non", e.facturable ? "Oui" : "Non",
+      e.difficulty || "", e.notes || ""
+    ]);
+  });
+  var csv = "\uFEFF" + rows.map(function (r) { return r.map(csvEscape).join(";"); }).join("\r\n");
+  var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "interventions-" + year + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+
 function attachRootListeners() {
   var btnNew = document.getElementById("btn-new");
   if (btnNew) btnNew.onclick = openNewForm;
   var btnRetry = document.getElementById("btn-retry");
   if (btnRetry) btnRetry.onclick = loadEntries;
-  var btnStats = document.getElementById("btn-stats");
-  if (btnStats) btnStats.onclick = openStatsModal;
-  var btnTest = document.getElementById("btn-test");
-  if (btnTest) btnTest.onclick = toggleTestMode;
-  var btnLock = document.getElementById("btn-lock");
-  if (btnLock) btnLock.onclick = openLockSettings;
+  var btnMenu = document.getElementById("btn-menu");
+  if (btnMenu) btnMenu.onclick = openMainMenu;
   var btnReminderClose = document.getElementById("btn-reminder-close");
   if (btnReminderClose) btnReminderClose.onclick = dismissReminder;
   var chkFilter = document.getElementById("chk-filter-or");
@@ -951,12 +1209,12 @@ function showUndoToast(entry) {
 // --- Formulaire (modale) ---
 function openNewForm() {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour ajouter une vraie intervention."); return; }
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", category: "", orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", category: "", difficulty: 0, orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour modifier tes vraies interventions."); return; }
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, category: entry.category || "", orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, category: entry.category || "", difficulty: entry.difficulty || 0, orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -975,7 +1233,7 @@ function duplicateFromForm() {
   var category = document.getElementById("f-category").value;
   var facturable = document.getElementById("f-facturable").checked;
   closeForm();
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: lieu, client: client, notes: "", category: category, orSaved: false, orNumber: "", facturable: facturable, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: lieu, client: client, notes: "", category: category, difficulty: 0, orSaved: false, orNumber: "", facturable: facturable, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 
@@ -1024,6 +1282,8 @@ function renderForm() {
   html += '<input id="f-facturable" type="checkbox" style="width:17px;height:17px;accent-color:' + COLORS.amber + ';"' + (form.facturable ? ' checked' : '') + '/>';
   html += 'Facturable</label>';
 
+  html += '<label class="field"><span>Difficulté</span><div id="f-difficulty-stars" style="display:flex;gap:6px;font-size:24px;"></div></label>';
+
   html += '<label class="field"><span id="f-photos-label">Photos</span><div id="f-photos-grid"></div><input id="f-photo-input" type="file" accept="image/*" multiple style="display:none;"/></label>';
   html += '</div>';
 
@@ -1050,6 +1310,24 @@ function renderForm() {
 
   renderPhotoGrid();
   renderFormError();
+  renderDifficultyStars();
+}
+
+function renderDifficultyStars() {
+  var box = document.getElementById("f-difficulty-stars");
+  if (!box) return;
+  var html = "";
+  for (var i = 1; i <= 5; i++) {
+    html += '<button class="star-btn" data-value="' + i + '" style="background:transparent;border:none;padding:0;color:' + (i <= (form.difficulty || 0) ? COLORS.amber : COLORS.border) + ';">★</button>';
+  }
+  box.innerHTML = html;
+  box.querySelectorAll(".star-btn").forEach(function (btn) {
+    btn.onclick = function () {
+      var v = parseInt(btn.getAttribute("data-value"), 10);
+      form.difficulty = form.difficulty === v ? 0 : v;
+      renderDifficultyStars();
+    };
+  });
 }
 
 function renderFormError() {
@@ -1238,7 +1516,7 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, category: category, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, category: category, difficulty: form.difficulty || 0, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
 
   function saveOffline() {
@@ -1298,6 +1576,15 @@ function deleteFromForm() {
 loadEntries();
 if (getQueue().length > 0 && navigator.onLine) trySyncPending();
 
+sb.auth.getSession().then(function (res) {
+  currentSession = res.data ? res.data.session : null;
+});
+sb.auth.onAuthStateChange(function (event, session) {
+  currentSession = session;
+  if (session) { hideAuthScreen(); loadEntries(); }
+  renderRoot();
+});
+
 // Écran de lancement : reste affiché le temps que le GIF joue en entier, puis s'efface en douceur
 (function () {
   var SPLASH_DURATION_MS = 3600; // réduite encore de 3s
@@ -1307,7 +1594,11 @@ if (getQueue().length > 0 && navigator.onLine) trySyncPending();
     splash.style.opacity = "0";
     setTimeout(function () {
       splash.remove();
-      if (getPin()) showLockScreen(function () {});
+      function afterUnlock() {
+        if (!currentSession) showAuthScreen();
+      }
+      if (getPin()) showLockScreen(afterUnlock);
+      else afterUnlock();
     }, 400);
   }, SPLASH_DURATION_MS);
 })();
