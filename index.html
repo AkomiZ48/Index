@@ -143,6 +143,16 @@ function categoryInfo(id) {
   return null;
 }
 
+var STATUSES = [
+  { id: "termine", label: "Terminé", color: "#4FB68E" },
+  { id: "en_cours", label: "En cours", color: "#F0827D" },
+  { id: "attente_pieces", label: "En attente de pièces", color: "#C9A0F5" }
+];
+function statusInfo(id) {
+  for (var i = 0; i < STATUSES.length; i++) if (STATUSES[i].id === id) return STATUSES[i];
+  return null;
+}
+
 // --- Code PIN de verrouillage ---
 var PIN_KEY = "carnet:pin";
 function getPin() { try { return localStorage.getItem(PIN_KEY) || ""; } catch (e) { return ""; } }
@@ -215,14 +225,14 @@ function sbFetchEntries() {
     .then(function (res) {
       if (res.error) throw res.error;
       return res.data.map(function (row) {
-        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false, category: row.category || "", difficulty: row.difficulty || 0 };
+        return { id: row.id, date: row.date, start: row.start_time, end: row.end_time, lieu: row.lieu || "", client: row.client || "", notes: row.notes || "", orSaved: !!row.or_saved, orNumber: row.or_number || "", facturable: row.facturable !== false, category: row.category || "", difficulty: row.difficulty || 0, status: row.status || "" };
       });
     });
 }
 function sbUpsertEntry(entry) {
   return sb.from("interventions").upsert({
     id: entry.id, date: entry.date, start_time: entry.start, end_time: entry.end,
-    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false, category: entry.category || null, difficulty: entry.difficulty || null, user_id: currentUserId()
+    lieu: entry.lieu || null, client: entry.client || null, notes: entry.notes || null, or_saved: !!entry.orSaved, or_number: entry.orNumber || null, facturable: entry.facturable !== false, category: entry.category || null, difficulty: entry.difficulty || null, status: entry.status || null, user_id: currentUserId()
   }).then(function (res) { if (res.error) throw res.error; });
 }
 function sbDeleteEntry(id) {
@@ -471,6 +481,7 @@ function ticketHTML(entry) {
   var pendingDelete = state.pendingDeleteId === entry.id;
 
   var cat = categoryInfo(entry.category);
+  var stat = statusInfo(entry.status);
 
   var out = '<div style="position:relative;display:flex;background:' + COLORS.surface + ';border:1px solid ' + COLORS.border + ';border-radius:8px;overflow:hidden;">';
   out += '<div style="width:14px;flex-shrink:0;background-image:radial-gradient(circle,' + COLORS.bg + ' 2.5px,transparent 2.6px);background-size:14px 14px;background-position:center;border-right:1px dashed ' + COLORS.border + ';"></div>';
@@ -479,6 +490,7 @@ function ticketHTML(entry) {
   out += '<span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
   out += '<span style="font-family:\'Oswald\',sans-serif;font-weight:600;font-size:15px;text-transform:capitalize;color:' + COLORS.ink + ' !important;">' + esc(fmtDateShort(entry.date)) + '</span>';
   if (cat) out += '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + cat.color + ';border:1px solid ' + cat.color + ';border-radius:4px;padding:1px 5px;">' + esc(cat.label.toUpperCase()) + '</span>';
+  if (stat) out += '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + stat.color + ';border:1px solid ' + stat.color + ';border-radius:4px;padding:1px 5px;">' + esc(stat.label.toUpperCase()) + '</span>';
   out += entry.orSaved
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + ' ✓</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + '</span>';
@@ -486,7 +498,7 @@ function ticketHTML(entry) {
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">FACTURABLE</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.danger + ';border:1px solid ' + COLORS.danger + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
   out += '</span>';
-  out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + COLORS.amberLight + ';">' + fmtDuration(dur) + '</span></div>';
+  out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + (overtime > 0 ? COLORS.amberLight : COLORS.tealLight) + ';">' + fmtDuration(dur) + '</span></div>';
   out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
   if (overtime > 0) out += '<div style="font-size:12px;font-weight:600;color:' + COLORS.amberLight + ';margin-top:3px;">+ ' + fmtDuration(overtime) + ' heures sup.</div>';
   if (entry.lieu || entry.client || photoCount > 0) {
@@ -1355,12 +1367,12 @@ function showUndoToast(entry) {
 // --- Formulaire (modale) ---
 function openNewForm() {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour ajouter une vraie intervention."); return; }
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", category: "", difficulty: 0, orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: "", client: "", notes: "", category: "", status: "", difficulty: 0, orSaved: false, orNumber: "", facturable: true, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 function openEditForm(entry) {
   if (state.testMode) { alert("Désactive le mode test (⚙️) pour modifier tes vraies interventions."); return; }
-  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, category: entry.category || "", difficulty: entry.difficulty || 0, orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
+  form = { id: entry.id, date: entry.date, start: entry.start, end: entry.end, lieu: entry.lieu, client: entry.client, notes: entry.notes, category: entry.category || "", status: entry.status || "", difficulty: entry.difficulty || 0, orSaved: !!entry.orSaved, orNumber: entry.orNumber || "", facturable: entry.facturable !== false, isEditingExisting: true, photos: [], photosLoading: true, photoBusy: false, error: null, saving: false };
   renderForm();
   sbListPhotos(entry.id).then(function (photos) {
     if (!form || form.id !== entry.id) return;
@@ -1379,7 +1391,7 @@ function duplicateFromForm() {
   var category = document.getElementById("f-category").value;
   var facturable = document.getElementById("f-facturable").checked;
   closeForm();
-  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: lieu, client: client, notes: "", category: category, difficulty: 0, orSaved: false, orNumber: "", facturable: facturable, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
+  form = { id: genId(), date: todayISO(), start: "08:00", end: "17:00", lieu: lieu, client: client, notes: "", category: category, status: "", difficulty: 0, orSaved: false, orNumber: "", facturable: facturable, isEditingExisting: false, photos: [], photosLoading: false, photoBusy: false, error: null, saving: false };
   renderForm();
 }
 
@@ -1414,6 +1426,13 @@ function renderForm() {
   html += '<option value="">— Aucune —</option>';
   CATEGORIES.forEach(function (c) {
     html += '<option value="' + esc(c.id) + '"' + (form.category === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+  });
+  html += '</select></label>';
+
+  html += '<label class="field"><span>Statut</span><select id="f-status">';
+  html += '<option value="">— Aucun —</option>';
+  STATUSES.forEach(function (s) {
+    html += '<option value="' + esc(s.id) + '"' + (form.status === s.id ? ' selected' : '') + '>' + esc(s.label) + '</option>';
   });
   html += '</select></label>';
   html += '<label class="field"><span>Notes</span><textarea id="f-notes" rows="3" placeholder="Détails de l\'intervention…" style="resize:vertical;">' + esc(form.notes) + '</textarea></label>';
@@ -1661,6 +1680,7 @@ function saveForm() {
   var lieu = document.getElementById("f-lieu").value;
   var client = document.getElementById("f-client").value;
   var category = document.getElementById("f-category").value;
+  var status = document.getElementById("f-status").value;
   var notes = document.getElementById("f-notes").value;
   var orSaved = document.getElementById("f-or-saved").checked;
   var orNumber = document.getElementById("f-or-number").value;
@@ -1674,7 +1694,7 @@ function saveForm() {
   form.error = null;
   renderFormError();
 
-  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, category: category, difficulty: form.difficulty || 0, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
+  var entry = { id: form.id, date: date, start: start, end: end, lieu: lieu, client: client, category: category, status: status, difficulty: form.difficulty || 0, notes: notes, orSaved: orSaved, orNumber: orNumber, facturable: facturable };
   var okPhotosCount = form.photos.filter(function (p) { return p.status === "ok"; }).length;
 
   function saveOffline() {
