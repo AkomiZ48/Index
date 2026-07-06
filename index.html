@@ -113,9 +113,28 @@ var SUN_PALETTE = {
 };
 var COLORS = Object.assign({}, DARK_PALETTE);
 var SUN_KEY = "carnet:sunMode";
+var CUSTOM_THEME_KEY = "carnet:customTheme";
+var CUSTOMIZABLE_SLOTS = [
+  { key: "bg", label: "Fond général" },
+  { key: "surface", label: "Cartes / fiches" },
+  { key: "ink", label: "Texte principal" },
+  { key: "amber", label: "Accent principal (boutons, alertes)" },
+  { key: "teal", label: "Accent secondaire (vert)" },
+  { key: "border", label: "Bordures" }
+];
 function getSunMode() { try { return localStorage.getItem(SUN_KEY) === "1"; } catch (e) { return false; } }
+function getCustomTheme() {
+  try {
+    var raw = localStorage.getItem(CUSTOM_THEME_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+function setCustomTheme(overrides) {
+  try { localStorage.setItem(CUSTOM_THEME_KEY, JSON.stringify(overrides)); } catch (e) {}
+}
 function applyTheme(sunMode) {
   Object.assign(COLORS, sunMode ? SUN_PALETTE : DARK_PALETTE);
+  Object.assign(COLORS, getCustomTheme());
   document.documentElement.style.setProperty("--bg", COLORS.bg);
   document.documentElement.style.setProperty("--ink", COLORS.ink);
   document.documentElement.style.setProperty("--input-bg", COLORS.inputBg);
@@ -936,6 +955,7 @@ function openMainMenu() {
   html += item("calendar", "📅 Vue calendrier");
   html += item("export-year", "🗓️ Exporter toute l'année");
   html += item("sun", getSunMode() ? "🌙 Revenir au thème sombre" : "☀️ Mode plein soleil");
+  html += item("colors", "🎨 Personnaliser les couleurs");
   html += item("test", state.testMode ? "⚙️ Quitter le mode test" : "⚙️ Mode test (données fictives)");
 
   if (currentSession) html += item("logout", "👤 Déconnexion (" + esc(currentUserEmail()) + ")");
@@ -953,6 +973,7 @@ function openMainMenu() {
       else if (action === "calendar") openCalendarModal();
       else if (action === "export-year") openExportYearMenu();
       else if (action === "sun") toggleSunMode();
+      else if (action === "colors") openColorSettings();
       else if (action === "test") toggleTestMode();
       else if (action === "lock") openLockSettings();
       else if (action === "logout") { sbSignOut().then(function () { location.reload(); }); }
@@ -1192,6 +1213,63 @@ function openAccountModal() {
       msg("Mot de passe mis à jour.");
       document.getElementById("acc-password").value = "";
     });
+  };
+}
+
+
+// --- Personnalisation des couleurs ---
+function openColorSettings() {
+  var existing = document.getElementById("color-modal");
+  if (existing) existing.remove();
+  var overrides = getCustomTheme();
+
+  var wrap = document.createElement("div");
+  wrap.id = "color-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(10,12,13,0.72);display:flex;align-items:flex-end;z-index:60;";
+  wrap.onclick = function (e) { if (e.target === wrap) wrap.remove(); };
+
+  var panel = document.createElement("div");
+  panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;max-height:85vh;overflow-y:auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:18px;";
+  panel.onclick = function (e) { e.stopPropagation(); };
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+  html += '<h2 style="font-family:\'Oswald\',sans-serif;font-size:16px;text-transform:uppercase;margin:0;">🎨 Couleurs</h2>';
+  html += '<button id="color-close" style="background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:20px;">✕</button></div>';
+  html += '<p style="font-size:12.5px;color:' + COLORS.inkDim + ';margin-top:0;margin-bottom:16px;">Personnalise l\'app à ta sauce. Les changements sont propres à cet appareil.</p>';
+
+  CUSTOMIZABLE_SLOTS.forEach(function (slot) {
+    var current = overrides[slot.key] || COLORS[slot.key];
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">';
+    html += '<span style="font-size:13.5px;">' + esc(slot.label) + '</span>';
+    html += '<input class="color-input" data-key="' + slot.key + '" type="color" value="' + current + '" style="width:44px;height:34px;padding:2px;border-radius:6px;border:1px solid ' + COLORS.border + ';background:transparent;"/>';
+    html += '</div>';
+  });
+
+  html += '<div style="display:flex;gap:10px;margin-top:16px;">';
+  html += '<button id="color-reset" class="btn" style="background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';flex:1;">Réinitialiser</button>';
+  html += '<button id="color-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;flex:1;font-weight:700;">Appliquer</button>';
+  html += '</div>';
+
+  panel.innerHTML = html;
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+
+  document.getElementById("color-close").onclick = function () { wrap.remove(); };
+  document.getElementById("color-reset").onclick = function () {
+    setCustomTheme({});
+    applyTheme(getSunMode());
+    wrap.remove();
+    renderRoot();
+  };
+  document.getElementById("color-save").onclick = function () {
+    var next = getCustomTheme();
+    panel.querySelectorAll(".color-input").forEach(function (input) {
+      next[input.getAttribute("data-key")] = input.value;
+    });
+    setCustomTheme(next);
+    applyTheme(getSunMode());
+    wrap.remove();
+    renderRoot();
   };
 }
 
