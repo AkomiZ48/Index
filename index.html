@@ -157,8 +157,18 @@ var CATEGORIES = [
   { id: "livraison", label: "Livraison", color: "#C9A0F5" },
   { id: "autre", label: "Autre", color: "#9FBAAF" }
 ];
+var CATEGORY_COLORS_KEY = "carnet:categoryColors";
+function getCategoryColorOverrides() {
+  try { var raw = localStorage.getItem(CATEGORY_COLORS_KEY); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+function setCategoryColorOverrides(o) { try { localStorage.setItem(CATEGORY_COLORS_KEY, JSON.stringify(o)); } catch (e) {} }
 function categoryInfo(id) {
-  for (var i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i].id === id) return CATEGORIES[i];
+  for (var i = 0; i < CATEGORIES.length; i++) {
+    if (CATEGORIES[i].id === id) {
+      var overrides = getCategoryColorOverrides();
+      return { id: CATEGORIES[i].id, label: CATEGORIES[i].label, color: overrides[id] || CATEGORIES[i].color };
+    }
+  }
   return null;
 }
 
@@ -167,10 +177,30 @@ var STATUSES = [
   { id: "en_cours", label: "En cours", color: "#F0827D" },
   { id: "attente_pieces", label: "En attente de pièces", color: "#C9A0F5" }
 ];
+var STATUS_COLORS_KEY = "carnet:statusColors";
+function getStatusColorOverrides() {
+  try { var raw = localStorage.getItem(STATUS_COLORS_KEY); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+function setStatusColorOverrides(o) { try { localStorage.setItem(STATUS_COLORS_KEY, JSON.stringify(o)); } catch (e) {} }
 function statusInfo(id) {
-  for (var i = 0; i < STATUSES.length; i++) if (STATUSES[i].id === id) return STATUSES[i];
+  for (var i = 0; i < STATUSES.length; i++) {
+    if (STATUSES[i].id === id) {
+      var overrides = getStatusColorOverrides();
+      return { id: STATUSES[i].id, label: STATUSES[i].label, color: overrides[id] || STATUSES[i].color };
+    }
+  }
   return null;
 }
+
+var FACT_COLORS_KEY = "carnet:factColors";
+function getFactColors() {
+  var defaults = { oui: COLORS.teal, non: COLORS.danger };
+  try {
+    var raw = localStorage.getItem(FACT_COLORS_KEY);
+    return raw ? Object.assign(defaults, JSON.parse(raw)) : defaults;
+  } catch (e) { return defaults; }
+}
+function setFactColors(o) { try { localStorage.setItem(FACT_COLORS_KEY, JSON.stringify(o)); } catch (e) {} }
 
 // --- Code PIN de verrouillage ---
 var PIN_KEY = "carnet:pin";
@@ -513,9 +543,10 @@ function ticketHTML(entry) {
   out += entry.orSaved
     ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + ' ✓</span>'
     : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.amberLight + ';border:1px solid ' + COLORS.amberLight + ';border-radius:4px;padding:1px 5px;">OR' + (entry.orNumber ? ' ' + esc(entry.orNumber) : '') + '</span>';
+  var factColors = getFactColors();
   out += entry.facturable
-    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.teal + ';border:1px solid ' + COLORS.teal + ';border-radius:4px;padding:1px 5px;">FACTURABLE</span>'
-    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + COLORS.danger + ';border:1px solid ' + COLORS.danger + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
+    ? '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + factColors.oui + ';border:1px solid ' + factColors.oui + ';border-radius:4px;padding:1px 5px;">FACTURABLE</span>'
+    : '<span style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:' + factColors.non + ';border:1px solid ' + factColors.non + ';border-radius:4px;padding:1px 5px;">NON FACTURABLE</span>';
   out += '</span>';
   out += '<span style="font-family:\'Space Mono\',monospace;font-weight:700;font-size:16px;color:' + (overtime > 0 ? COLORS.amberLight : COLORS.tealLight) + ';">' + fmtDuration(dur) + '</span></div>';
   out += '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:' + COLORS.inkDim + ';margin-top:2px;">' + esc(entry.start) + ' → ' + esc(entry.end) + '</div>';
@@ -1222,6 +1253,9 @@ function openColorSettings() {
   var existing = document.getElementById("color-modal");
   if (existing) existing.remove();
   var overrides = getCustomTheme();
+  var catOverrides = getCategoryColorOverrides();
+  var statOverrides = getStatusColorOverrides();
+  var factColors = getFactColors();
 
   var wrap = document.createElement("div");
   wrap.id = "color-modal";
@@ -1232,21 +1266,39 @@ function openColorSettings() {
   panel.style.cssText = "width:100%;max-width:480px;margin:0 auto;max-height:85vh;overflow-y:auto;background:" + COLORS.surfaceRaised + ";border-top:1px solid " + COLORS.border + ";border-top-left-radius:16px;border-top-right-radius:16px;padding:18px;";
   panel.onclick = function (e) { e.stopPropagation(); };
 
+  function colorRow(label, inputClass, key, currentColor) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">' +
+      '<span style="font-size:13.5px;">' + esc(label) + '</span>' +
+      '<input class="' + inputClass + '" data-key="' + key + '" type="color" value="' + currentColor + '" style="width:44px;height:34px;padding:2px;border-radius:6px;border:1px solid ' + COLORS.border + ';background:transparent;"/>' +
+      '</div>';
+  }
+
   var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
   html += '<h2 style="font-family:\'Oswald\',sans-serif;font-size:16px;text-transform:uppercase;margin:0;">🎨 Couleurs</h2>';
   html += '<button id="color-close" style="background:transparent;border:none;color:' + COLORS.inkDim + ';font-size:20px;">✕</button></div>';
   html += '<p style="font-size:12.5px;color:' + COLORS.inkDim + ';margin-top:0;margin-bottom:16px;">Personnalise l\'app à ta sauce. Les changements sont propres à cet appareil.</p>';
 
+  html += '<div style="font-family:\'Oswald\',sans-serif;font-size:11.5px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin-bottom:8px;">Thème général</div>';
   CUSTOMIZABLE_SLOTS.forEach(function (slot) {
-    var current = overrides[slot.key] || COLORS[slot.key];
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">';
-    html += '<span style="font-size:13.5px;">' + esc(slot.label) + '</span>';
-    html += '<input class="color-input" data-key="' + slot.key + '" type="color" value="' + current + '" style="width:44px;height:34px;padding:2px;border-radius:6px;border:1px solid ' + COLORS.border + ';background:transparent;"/>';
-    html += '</div>';
+    html += colorRow(slot.label, "color-input", slot.key, overrides[slot.key] || COLORS[slot.key]);
+  });
+
+  html += '<div style="font-family:\'Oswald\',sans-serif;font-size:11.5px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin:18px 0 8px;">Facturable</div>';
+  html += colorRow("Facturable", "fact-input", "oui", factColors.oui);
+  html += colorRow("Non facturable", "fact-input", "non", factColors.non);
+
+  html += '<div style="font-family:\'Oswald\',sans-serif;font-size:11.5px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin:18px 0 8px;">Catégories</div>';
+  CATEGORIES.forEach(function (c) {
+    html += colorRow(c.label, "cat-input", c.id, catOverrides[c.id] || c.color);
+  });
+
+  html += '<div style="font-family:\'Oswald\',sans-serif;font-size:11.5px;letter-spacing:0.06em;color:' + COLORS.teal + ';text-transform:uppercase;margin:18px 0 8px;">Statuts</div>';
+  STATUSES.forEach(function (s) {
+    html += colorRow(s.label, "stat-input", s.id, statOverrides[s.id] || s.color);
   });
 
   html += '<div style="display:flex;gap:10px;margin-top:16px;">';
-  html += '<button id="color-reset" class="btn" style="background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';flex:1;">Réinitialiser</button>';
+  html += '<button id="color-reset" class="btn" style="background:transparent;border:1px solid ' + COLORS.danger + ';color:' + COLORS.danger + ';flex:1;">Réinitialiser tout</button>';
   html += '<button id="color-save" class="btn" style="background:' + COLORS.amber + ';color:#F2EFE6;flex:1;font-weight:700;">Appliquer</button>';
   html += '</div>';
 
@@ -1257,16 +1309,30 @@ function openColorSettings() {
   document.getElementById("color-close").onclick = function () { wrap.remove(); };
   document.getElementById("color-reset").onclick = function () {
     setCustomTheme({});
+    setCategoryColorOverrides({});
+    setStatusColorOverrides({});
+    setFactColors({});
     applyTheme(getSunMode());
     wrap.remove();
     renderRoot();
   };
   document.getElementById("color-save").onclick = function () {
-    var next = getCustomTheme();
-    panel.querySelectorAll(".color-input").forEach(function (input) {
-      next[input.getAttribute("data-key")] = input.value;
-    });
-    setCustomTheme(next);
+    var nextTheme = getCustomTheme();
+    panel.querySelectorAll(".color-input").forEach(function (input) { nextTheme[input.getAttribute("data-key")] = input.value; });
+    setCustomTheme(nextTheme);
+
+    var nextCat = getCategoryColorOverrides();
+    panel.querySelectorAll(".cat-input").forEach(function (input) { nextCat[input.getAttribute("data-key")] = input.value; });
+    setCategoryColorOverrides(nextCat);
+
+    var nextStat = getStatusColorOverrides();
+    panel.querySelectorAll(".stat-input").forEach(function (input) { nextStat[input.getAttribute("data-key")] = input.value; });
+    setStatusColorOverrides(nextStat);
+
+    var nextFact = {};
+    panel.querySelectorAll(".fact-input").forEach(function (input) { nextFact[input.getAttribute("data-key")] = input.value; });
+    setFactColors(nextFact);
+
     applyTheme(getSunMode());
     wrap.remove();
     renderRoot();
